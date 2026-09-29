@@ -1,0 +1,55 @@
+{
+  "name": "HLK-LD2410C",
+  "author": "Patrik",
+  "pins": ["VCC", "GND", "TX", "RX"],
+  "controls": [
+    {
+      "id": "presence",
+      "label": "Presence",
+      "type": "range",
+      "min": 0,
+      "max": 1,
+      "step": 1
+    },
+    {
+      "id": "targetType",
+      "label": "Target type",
+      "type": "range",
+      "min": 0,
+      "max": 3,
+      "step": 1
+    },
+    {
+      "id": "movingDistance",
+      "label": "Moving distance (cm)",
+      "type": "range",
+      "min": 0,
+      "max": 600,
+      "step": 1
+    },
+    {
+      "id": "stationaryDistance",
+      "label": "Stationary distance (cm)",
+      "type": "range",
+      "min": 0,
+      "max": 600,
+      "step": 1
+    },
+    {
+      "id": "movingEnergy",
+      "label": "Moving energy",
+      "type": "range",
+      "min": 0,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "id": "stationaryEnergy",
+      "label": "Stationary energy",
+      "type": "range",
+      "min": 0,
+      "max": 100,
+      "step": 1
+    }
+  ]
+}

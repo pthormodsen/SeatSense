@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "author": "Patrik",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "chip-ld2410c",
+      "id": "radar1",
+      "top": 120,
+      "left": -120,
+      "attrs": {
+        "presence": "0",
+        "targetType": "0",
+        "movingDistance": "0",
+        "stationaryDistance": "0",
+        "movingEnergy": "0",
+        "stationaryEnergy": "0"
+      }
+    },
+    {
+      "type": "board-esp32-s3-devkitc-1",
+      "id": "esp",
+      "top": 60,
+      "left": 120,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:5V", "radar1:VCC", "red", [] ],
+    [ "esp:GND.1", "radar1:GND", "black", [] ],
+
+    [ "esp:17", "radar1:TX", "green", [] ],
+    [ "esp:18", "radar1:RX", "blue", [] ]
+  ],
+  "dependencies": {}
+}

@@ -1,0 +1,8 @@
+[wokwi]
+version = 1
+firmware = '.pio/build/esp32-s3-devkitm-1/firmware.bin'
+elf = '.pio/build/esp32-s3-devkitm-1/firmware.elf'
+
+[[chip]]
+name = 'ld2410c'
+binary = 'chips/ld2410c.chip.wasm'

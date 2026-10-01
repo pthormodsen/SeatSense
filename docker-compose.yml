@@ -1,0 +1,17 @@
+# SeatSense frontend (static React build served by nginx).
+# No host ports are published; traffic arrives via the Cloudflare Tunnel
+# on the external "cloudflare" network at http://seatsense:80.
+services:
+  seatsense:
+    build:
+      context: ./frontend
+    image: seatsense-frontend:latest
+    container_name: seatsense
+    restart: unless-stopped
+    networks:
+      cloudflare:
+        aliases: [seatsense]
+
+networks:
+  cloudflare:
+    external: true

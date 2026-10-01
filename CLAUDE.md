@@ -58,6 +58,10 @@ npm run build     # tsc -b && vite build (this is the type check)
 npm run preview
 ```
 
+### Deployment (run from repo root)
+
+`docker compose up -d --build` builds `frontend/Dockerfile` (nginx, no published ports, joins external network `cloudflare` as `seatsense`). See `DEPLOYMENT.md`.
+
 There are no tests or linters configured in either part (`test/` is the PlatformIO placeholder).
 
 ## Firmware architecture

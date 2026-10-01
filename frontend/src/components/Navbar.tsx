@@ -19,7 +19,7 @@ const Navbar = () => (
       </NavLink>
       <div className="flex items-center gap-1">
         <NavLink to="/" className={linkClass}>
-          Dashboard
+          Home
         </NavLink>
         <NavLink to="/building/kronstad" className={linkClass}>
           Kronstad

@@ -1,15 +1,16 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   floorMapView,
   getMazeMapZLevelForFloor,
   KRONSTAD_CAMPUS_ID,
   mBuildingMazeMapZLevelLabels,
 } from '../data/mazeMapPlacements';
-import { createDemoRoomFromMazeMap } from '../demo/createDemoRoomFromMazeMap';
-import { getMazeMapRoomCode } from '../demo/roomClassification';
-import type { Floor } from '../types/campus';
+import { getMazeMapRoomArea, getMazeMapRoomCode, getStableMazeMapRoomKey } from '../demo/roomClassification';
+import { seatService } from '../services/seatService';
+import type { Floor, Room } from '../types/campus';
 import type { MazeMapFeature, MazeMapFeatureCollection, MazeMapGlobal, MazeMapInstance, MazeMapMouseEvent } from '../types/mazemap';
 import { getGroupRoomStatus } from '../utils/roomStatus';
+import MapLegend from './MapLegend';
 import { groupRoomMapOverlayStyles } from './statusStyles';
 
 const MAZEMAP_JS_URL = 'https://api.mazemap.com/js/v2.1.2/mazemap.min.js';
@@ -35,12 +36,29 @@ export interface MazeMapFloorLevelChange {
   roomCodes: string[];
 }
 
+// A room found on this floor's MazeMap z-level by the status-overlay refresh.
+// `room` is the exact object the overlay resolved (cached for generated rooms),
+// and `selection` is exactly the selection it was resolved from (room code,
+// z-level, canonical polygon geometry), i.e. the same geometry the click path
+// aligns to.
+export interface DiscoveredMazeMapRoom {
+  room: Room;
+  selection: MazeMapRoomSelection;
+}
+
 interface MazeMapFloorMapProps {
   floor: Floor;
   selectedRoomId: string | null;
+  // Room code (e.g. "M107") of the room selected outside the map, such as from
+  // the room list. Highlighted only on an exact room-code match among the room
+  // polygons currently rendered on this floor's z-level; never guessed.
+  selectedRoomName?: string | null;
   onSelectRoom: (selection: MazeMapRoomSelection) => void;
   onClearRoom?: () => void;
   onFloorLevelChange?: (change: MazeMapFloorLevelChange) => void;
+  // Called after an overlay refresh finds rooms on this floor's z-level that
+  // were not reported before for this floor. Receives the full current batch.
+  onRoomsDiscovered?: (rooms: DiscoveredMazeMapRoom[]) => void;
 }
 
 let mazemapLoadPromise: Promise<MazeMapGlobal> | null = null;
@@ -308,15 +326,20 @@ const getRoomLabelFeatures = (features: MazeMapFeature[]): RoomLabelFeature[] =>
     return labels;
   }, []);
 
-const getRoomCodeFromClickedPolygon = (
+// How a polygon got its room code: 0 = its own title, 1 = a label with the same
+// POI id inside the polygon, 2 = another label inside the polygon. Lower is
+// more trustworthy.
+type PolygonRoomCodeMatch = { code: string; tier: 0 | 1 | 2 };
+
+const getRoomCodeMatchFromPolygon = (
   polygonFeature: MazeMapFeature,
-  features: MazeMapFeature[],
+  allLabels: RoomLabelFeature[],
   activeZLevel: number,
-) => {
+): PolygonRoomCodeMatch | undefined => {
   const ownTitle = getRoomCode(getRoomLikeText(polygonFeature.properties ?? {}));
 
   if (ownTitle) {
-    return ownTitle;
+    return { code: ownTitle, tier: 0 };
   }
 
   const ring = getFirstPolygonRing(polygonFeature);
@@ -327,7 +350,7 @@ const getRoomCodeFromClickedPolygon = (
   }
 
   const polygonPoiId = getFeaturePoiId(polygonFeature);
-  const labels = getRoomLabelFeatures(features)
+  const labels = allLabels
     .filter((candidate) =>
       !hasConflictingZLevel(candidate.feature, activeZLevel)
       && isPointInRing(candidate.center, ring),
@@ -339,8 +362,83 @@ const getRoomCodeFromClickedPolygon = (
       return firstPoiMatch - secondPoiMatch
         || getPointDistance(first.center, polygonCenter) - getPointDistance(second.center, polygonCenter);
     });
+  const best = labels[0];
 
-  return labels[0]?.code;
+  if (!best) {
+    return undefined;
+  }
+
+  return { code: best.code, tier: polygonPoiId !== undefined && best.poiId === polygonPoiId ? 1 : 2 };
+};
+
+const getRoomCodeFromClickedPolygon = (
+  polygonFeature: MazeMapFeature,
+  features: MazeMapFeature[],
+  activeZLevel: number,
+) => getRoomCodeMatchFromPolygon(polygonFeature, getRoomLabelFeatures(features), activeZLevel)?.code;
+
+// One representative MazeMap polygon per room code on the active z-level.
+// queryRenderedFeatures can return the same room several times (split across
+// vector-tile boundaries) and label-less polygons can pick up a code from a
+// label inside them. Both the status overlay and the click selection use this
+// polygon's geometry, so a room's area (and therefore its generated type and
+// data) is the same whether it is coloured or clicked. Preference: best code
+// tier (own title > POI-matched label > other label), then the largest piece.
+const getCanonicalRoomPolygons = (
+  renderedFeatures: MazeMapFeature[],
+  activeZLevel: number,
+) => {
+  const labels = getRoomLabelFeatures(renderedFeatures);
+  const canonical = new Map<string, { feature: MazeMapFeature; tier: number; area: number }>();
+
+  getRoomPolygonFeatures(renderedFeatures).forEach((feature) => {
+    if (!feature.geometry || hasConflictingZLevel(feature, activeZLevel)) {
+      return;
+    }
+
+    const match = getRoomCodeMatchFromPolygon(feature, labels, activeZLevel);
+
+    if (!match) {
+      return;
+    }
+
+    const area = getPolygonArea(feature);
+    const current = canonical.get(match.code);
+
+    if (!current || match.tier < current.tier || (match.tier === current.tier && area > current.area)) {
+      canonical.set(match.code, { feature, tier: match.tier, area });
+    }
+  });
+
+  return canonical;
+};
+
+// Generated (unknown) rooms are a pure function of identity + polygon area, so
+// they are cached to avoid regenerating every demo room (including reading-room
+// seat layouts) on each overlay refresh (idle/moveend). Known rooms are never
+// cached; they always come fresh from seatService.
+const GENERATED_ROOM_CACHE_LIMIT = 1000;
+const generatedRoomCache = new Map<string, Room>();
+
+const resolveOverlayRoom = (selection: MazeMapRoomSelection): Room => {
+  const cacheKey = `${getStableMazeMapRoomKey(selection)}|${getMazeMapRoomArea(selection.geometry) ?? 'none'}`;
+  const cached = generatedRoomCache.get(cacheKey);
+
+  if (cached) {
+    return cached;
+  }
+
+  const room = seatService.resolveMazeMapRoom(selection);
+
+  if (!seatService.findKnownMazeMapRoom(selection)) {
+    if (generatedRoomCache.size >= GENERATED_ROOM_CACHE_LIMIT) {
+      generatedRoomCache.clear();
+    }
+
+    generatedRoomCache.set(cacheKey, room);
+  }
+
+  return room;
 };
 
 const getVisibleRoomCodes = (
@@ -389,63 +487,90 @@ const getRoomCodeFromPolygon = (
   return labels.find((label) => isPointInRing(label.center, ring))?.code;
 };
 
-const createRoomStatusFeatureCollection = (
+type ResolvedOverlayRoom = DiscoveredMazeMapRoom & { geometry: MazeMapFeature['geometry'] };
+
+type RoomStatusRefreshResult = {
+  zLevel: number;
+  rooms: ResolvedOverlayRoom[];
+};
+
+// Resolves every canonical room polygon rendered in the viewport on the active
+// z-level to a SeatSense room. Shared by the status overlay and room discovery
+// so both see the same room objects and selections.
+const resolveRenderedRooms = (
   map: MazeMapInstance,
   floor: Floor,
   mapElement: HTMLElement | null,
-): MazeMapFeatureCollection => {
-  if (!mapElement || !map.queryRenderedFeatures) {
-    return emptyFeatureCollection;
-  }
+): RoomStatusRefreshResult => {
+  const currentZLevel = map.getZLevel?.() ?? getMazeMapZLevelForFloor(floor);
 
-  const roomByCode = new Map(
-    floor.rooms.map((room) => [room.name.toUpperCase(), room]),
-  );
+  if (!mapElement || !map.queryRenderedFeatures) {
+    return { zLevel: currentZLevel, rooms: [] };
+  }
 
   const renderedFeatures = map.queryRenderedFeatures([
     [0, 0],
     [mapElement.clientWidth, mapElement.clientHeight],
   ]);
-  const currentZLevel = map.getZLevel?.() ?? getMazeMapZLevelForFloor(floor);
-  const labels = getRoomLabelFeatures(renderedFeatures);
-  const polygonFeatures = getRoomPolygonFeatures(renderedFeatures);
 
-  const overlayFeatures = polygonFeatures
-    .reduce<MazeMapFeatureCollection['features']>((features, feature) => {
-      const roomCode = getRoomCodeFromPolygon(feature, labels);
-      const knownRoom = roomCode ? roomByCode.get(roomCode) : undefined;
-      const room = knownRoom ?? (roomCode ? createDemoRoomFromMazeMap({
+  const rooms = Array.from(getCanonicalRoomPolygons(renderedFeatures, currentZLevel))
+    .reduce<ResolvedOverlayRoom[]>((resolved, [roomCode, { feature }]) => {
+      if (!feature.geometry) {
+        return resolved;
+      }
+
+      // The selection fields (code, z-level, canonical polygon geometry) match
+      // what the click handler sends, so a room resolves to the same room
+      // whether it is coloured, listed or clicked.
+      const selection: MazeMapRoomSelection = {
         title: roomCode,
         identifier: roomCode,
         floor: currentZLevel,
         geometry: feature.geometry,
-      }) : undefined);
+      };
 
-      if (
-        !room
-        || room.type !== 'group-room'
-        || !feature.geometry
-        || features.some((item) => item.properties.roomName === room.name)
-      ) {
-        return features;
-      }
-
-      const style = groupRoomMapOverlayStyles[getGroupRoomStatus(room)];
-
-      features.push({
-        type: 'Feature',
-        geometry: feature.geometry,
-        properties: {
-          roomId: room.id,
-          roomName: room.name,
-          fillColor: style.fillColor,
-          lineColor: style.lineColor,
-          statusLabel: style.label,
-        },
-      });
-
-      return features;
+      resolved.push({ room: resolveOverlayRoom(selection), selection, geometry: feature.geometry });
+      return resolved;
     }, []);
+
+  return { zLevel: currentZLevel, rooms };
+};
+
+const createRoomStatusFeatureCollection = (rooms: ResolvedOverlayRoom[]): MazeMapFeatureCollection => {
+  const overlayFeatures = rooms.reduce<MazeMapFeatureCollection['features']>((features, { room, geometry }) => {
+    // The overlay shows group-room booking/presence state for every room on
+    // this z-level that resolves to a group room: known SeatSense group rooms
+    // and generated rooms classified as group rooms by polygon area. Reading
+    // rooms (known or generated) are never coloured. Every room stays
+    // clickable because click resolution uses MazeMap's own room polygons,
+    // never this overlay.
+    if (
+      room.type !== 'group-room'
+      || !geometry
+      || features.some((item) => item.properties.roomName === room.name)
+    ) {
+      return features;
+    }
+
+    const roomStatus = getGroupRoomStatus(room);
+    const style = groupRoomMapOverlayStyles[roomStatus];
+
+    features.push({
+      type: 'Feature',
+      geometry,
+      properties: {
+        roomId: room.id,
+        roomName: room.name,
+        roomKind: room.type,
+        status: roomStatus,
+        fillColor: style.fillColor,
+        lineColor: style.lineColor,
+        statusLabel: style.label,
+      },
+    });
+
+    return features;
+  }, []);
 
   return {
     type: 'FeatureCollection',
@@ -453,27 +578,35 @@ const createRoomStatusFeatureCollection = (
   };
 };
 
+// Refreshes the status overlay and returns the resolved rooms. Rooms are always
+// resolved (for discovery), even when status colours are off; then the overlay
+// is simply published empty.
 const setRoomStatusOverlay = (
   map: MazeMapInstance,
   floor: Floor,
   mapElement: HTMLElement | null,
   enabled: boolean,
-) => {
-  const data = enabled ? createRoomStatusFeatureCollection(map, floor, mapElement) : emptyFeatureCollection;
+): RoomStatusRefreshResult => {
+  const result = resolveRenderedRooms(map, floor, mapElement);
+  const data = enabled ? createRoomStatusFeatureCollection(result.rooms) : emptyFeatureCollection;
   const existingSource = map.getSource?.(ROOM_STATUS_SOURCE_ID);
 
   if (existingSource?.setData) {
     existingSource.setData(data);
-    return;
+    return result;
   }
 
   if (!enabled) {
-    return;
+    return result;
   }
 
   if (map.isStyleLoaded?.() === false || map.loaded?.() === false || !map.addSource || !map.addLayer) {
-    return;
+    return result;
   }
+
+  // Keep the selected-room highlight above the status overlay even if the
+  // highlight layers happened to be added first.
+  const beforeId = map.getLayer?.(SELECTED_ROOM_FILL_LAYER_ID) ? SELECTED_ROOM_FILL_LAYER_ID : undefined;
 
   try {
     map.addSource(ROOM_STATUS_SOURCE_ID, {
@@ -489,7 +622,7 @@ const setRoomStatusOverlay = (
         'fill-color': ['get', 'fillColor'],
         'fill-opacity': 0.38,
       },
-    });
+    }, beforeId);
 
     map.addLayer({
       id: ROOM_STATUS_OUTLINE_LAYER_ID,
@@ -500,10 +633,12 @@ const setRoomStatusOverlay = (
         'line-opacity': 0.92,
         'line-width': 2,
       },
-    });
+    }, beforeId);
   } catch {
     // MazeMap can still be settling its Mapbox style immediately after initialization.
   }
+
+  return result;
 };
 
 const featureCollectionForHighlight = (feature: MazeMapFeature): MazeMapFeatureCollection =>
@@ -567,6 +702,41 @@ const setSelectedRoomHighlight = (map: MazeMapInstance, feature: MazeMapFeature 
   }
 };
 
+// Finds the rendered MazeMap room polygon whose room code is exactly `roomCode`
+// on the active z-level, using the same code extraction as the status overlay.
+// Returns null when there is no exact match (not rendered, other level, etc.).
+const findRenderedRoomPolygonByCode = (
+  map: MazeMapInstance,
+  mapElement: HTMLElement | null,
+  roomCode: string,
+  activeZLevel: number,
+) => {
+  if (!mapElement || !map.queryRenderedFeatures) {
+    return null;
+  }
+
+  const renderedFeatures = map.queryRenderedFeatures([
+    [0, 0],
+    [mapElement.clientWidth, mapElement.clientHeight],
+  ]);
+  const labels = getRoomLabelFeatures(renderedFeatures)
+    .filter((label) => !hasConflictingZLevel(label.feature, activeZLevel));
+  const matches = getRoomPolygonFeatures(renderedFeatures)
+    .filter((feature) =>
+      Boolean(feature.geometry)
+      && !hasConflictingZLevel(feature, activeZLevel)
+      && getRoomCodeFromPolygon(feature, labels) === roomCode,
+    )
+    .sort((first, second) => getPolygonArea(first) - getPolygonArea(second));
+
+  return matches[0] ?? null;
+};
+
+const normalizeSelectedRoomName = (value?: string | null) => {
+  const trimmed = value?.trim().toUpperCase();
+  return trimmed ? trimmed : null;
+};
+
 const syncMapToFloor = (map: MazeMapInstance, zLevel: number) => {
   map.resize?.();
 
@@ -609,7 +779,15 @@ const traceRoomCandidate = (
   };
 };
 
-const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onFloorLevelChange }: MazeMapFloorMapProps) => {
+const MazeMapFloorMap = ({
+  floor,
+  selectedRoomId,
+  selectedRoomName,
+  onSelectRoom,
+  onClearRoom,
+  onFloorLevelChange,
+  onRoomsDiscovered,
+}: MazeMapFloorMapProps) => {
   const rawId = useId();
   const mapId = `mazemap-floor-${rawId.replace(/:/g, '')}`;
   const mapRef = useRef<MazeMapInstance | null>(null);
@@ -619,8 +797,57 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
   const showGroupRoomColorsRef = useRef(showGroupRoomColors);
   const floorZLevel = getMazeMapZLevelForFloor(floor);
   const lastObservedZLevelRef = useRef(floorZLevel);
+  // Room code currently drawn in the selected-room highlight (null = none).
+  const highlightedRoomCodeRef = useRef<string | null>(null);
+
+  // Room discovery: the callback is held in a ref so refreshes never depend on
+  // its identity; reported ids are tracked per floor to avoid render loops.
+  const onRoomsDiscoveredRef = useRef(onRoomsDiscovered);
+  const currentFloorIdRef = useRef(floor.id);
+  const discoveryRef = useRef<{ floorId: string; reportedRoomIds: Set<string> }>({
+    floorId: floor.id,
+    reportedRoomIds: new Set(),
+  });
 
   showGroupRoomColorsRef.current = showGroupRoomColors;
+  onRoomsDiscoveredRef.current = onRoomsDiscovered;
+  currentFloorIdRef.current = floor.id;
+
+  // Single entry point for every overlay refresh (initial, idle, moveend,
+  // timed, toggle). Refreshes the overlay, then reports discovered rooms only
+  // when the map shows this floor's z-level and the batch has a new room id.
+  const refreshRoomStatus = useCallback((
+    map: MazeMapInstance,
+    sourceFloor: Floor,
+    mapElement: HTMLElement | null,
+    enabled: boolean,
+  ) => {
+    const result = setRoomStatusOverlay(map, sourceFloor, mapElement, enabled);
+
+    // Ignore refreshes from closures that captured an older floor.
+    if (sourceFloor.id !== currentFloorIdRef.current) {
+      return;
+    }
+
+    if (discoveryRef.current.floorId !== sourceFloor.id) {
+      discoveryRef.current = { floorId: sourceFloor.id, reportedRoomIds: new Set() };
+    }
+
+    const callback = onRoomsDiscoveredRef.current;
+
+    if (!callback || result.rooms.length === 0 || result.zLevel !== getMazeMapZLevelForFloor(sourceFloor)) {
+      return;
+    }
+
+    const { reportedRoomIds } = discoveryRef.current;
+
+    if (!result.rooms.some(({ room }) => !reportedRoomIds.has(room.id))) {
+      return;
+    }
+
+    result.rooms.forEach(({ room }) => reportedRoomIds.add(room.id));
+    callback(result.rooms.map(({ room, selection }) => ({ room, selection })));
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -648,7 +875,7 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
           }
 
           syncInitialMapView(map, floorZLevel);
-          setRoomStatusOverlay(map, floor, document.getElementById(mapId), showGroupRoomColorsRef.current);
+          refreshRoomStatus(map, floor, document.getElementById(mapId), showGroupRoomColorsRef.current);
           setStatus('ready');
         };
 
@@ -695,7 +922,8 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
         .filter((feature) => !hasConflictingZLevel(feature, currentZLevel))
         .sort((first, second) => getPolygonArea(first) - getPolygonArea(second));
       const selectedFeature = roomPolygons[0];
-      const trace = features.map((feature) =>
+      // Debug trace is only built and printed in development builds.
+      const trace = !import.meta.env.DEV ? [] : features.map((feature) =>
         traceRoomCandidate(
           feature,
           currentZLevel,
@@ -712,39 +940,54 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
         ),
       );
 
-      console.groupCollapsed('[SeatSense MazeMap click]', {
-        point: event.point,
-        activeZ: currentZLevel,
-        routeFloorId: floor.id,
-        routeFloorName: floor.name,
-        expectedZ: floorZLevel,
-      });
+      if (import.meta.env.DEV) {
+        console.groupCollapsed('[SeatSense MazeMap click]', {
+          point: event.point,
+          activeZ: currentZLevel,
+          routeFloorId: floor.id,
+          routeFloorName: floor.name,
+          expectedZ: floorZLevel,
+        });
+      }
 
       if (selectedFeature) {
         const roomCode = getRoomCodeFromClickedPolygon(selectedFeature, visibleFeatures, currentZLevel);
 
         if (roomCode) {
+          // Use the same representative polygon as the status overlay for the
+          // room's geometry/area, so a coloured room opens with the same
+          // generated type and data. Identity (code + z-level) and known-room
+          // lookup do not depend on geometry. The highlight still uses the
+          // clicked polygon.
+          const canonicalFeature = getCanonicalRoomPolygons(visibleFeatures, currentZLevel)
+            .get(roomCode)?.feature;
           const displaySelection = {
             poiId: getFeaturePoiId(selectedFeature),
             identifier: roomCode,
             title: roomCode,
             floor: currentZLevel,
-            geometry: selectedFeature.geometry,
+            geometry: canonicalFeature?.geometry ?? selectedFeature.geometry,
           };
 
-          console.table(trace);
-          console.debug('[SeatSense MazeMap final selection]', displaySelection);
-          console.groupEnd();
+          if (import.meta.env.DEV) {
+            console.table(trace);
+            console.debug('[SeatSense MazeMap final selection]', displaySelection);
+            console.groupEnd();
+          }
           setSelectedRoomHighlight(map, selectedFeature);
+          highlightedRoomCodeRef.current = normalizeSelectedRoomName(roomCode);
           onSelectRoom(displaySelection);
           return;
         }
       }
 
-      console.table(trace);
-      console.debug('[SeatSense MazeMap final selection]', null);
-      console.groupEnd();
+      if (import.meta.env.DEV) {
+        console.table(trace);
+        console.debug('[SeatSense MazeMap final selection]', null);
+        console.groupEnd();
+      }
       setSelectedRoomHighlight(map, null);
+      highlightedRoomCodeRef.current = null;
       onClearRoom?.();
     };
 
@@ -789,7 +1032,7 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
 
     const map = mapRef.current;
     const mapElement = document.getElementById(mapId);
-    const refreshRoomStatusOverlay = () => setRoomStatusOverlay(map, floor, mapElement, showGroupRoomColorsRef.current);
+    const refreshRoomStatusOverlay = () => refreshRoomStatus(map, floor, mapElement, showGroupRoomColorsRef.current);
 
     syncMapToFloor(map, floorZLevel);
     refreshRoomStatusOverlay();
@@ -804,26 +1047,77 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
     map.on?.('moveend', refreshRoomStatusOverlay);
 
     setSelectedRoomHighlight(mapRef.current, null);
+    highlightedRoomCodeRef.current = null;
 
     return () => {
       timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
       map.off?.('idle', refreshRoomStatusOverlay);
       map.off?.('moveend', refreshRoomStatusOverlay);
     };
-  }, [floor, floor.name, floorZLevel, mapId, status]);
+  }, [floor, floor.name, floorZLevel, mapId, refreshRoomStatus, status]);
+
+  // List -> map highlight sync. Declared after the floor-sync effect so a floor
+  // change clears first and then re-applies the selection if it matches.
+  useEffect(() => {
+    if (status !== 'ready' || !mapRef.current) {
+      return undefined;
+    }
+
+    const map = mapRef.current;
+    const wantedCode = normalizeSelectedRoomName(selectedRoomName);
+
+    if (!wantedCode) {
+      if (highlightedRoomCodeRef.current !== null) {
+        setSelectedRoomHighlight(map, null);
+        highlightedRoomCodeRef.current = null;
+      }
+      return undefined;
+    }
+
+    const applyHighlight = () => {
+      // Already highlighted (e.g. the click handler just drew it): no-op.
+      if (highlightedRoomCodeRef.current === wantedCode) {
+        return;
+      }
+
+      const activeZLevel = map.getZLevel?.() ?? floorZLevel;
+      const match = activeZLevel === floorZLevel
+        ? findRenderedRoomPolygonByCode(map, document.getElementById(mapId), wantedCode, activeZLevel)
+        : null;
+
+      setSelectedRoomHighlight(map, match);
+      highlightedRoomCodeRef.current = match ? wantedCode : null;
+    };
+
+    // The polygon may not be rendered yet (map still loading/panning); retry
+    // when the map settles, but only while nothing is highlighted, so a newer
+    // map click is never overwritten by this older list selection.
+    const retryHighlight = () => {
+      if (highlightedRoomCodeRef.current === null) {
+        applyHighlight();
+      }
+    };
+
+    applyHighlight();
+    map.on?.('idle', retryHighlight);
+
+    return () => {
+      map.off?.('idle', retryHighlight);
+    };
+  }, [floor, floorZLevel, mapId, selectedRoomName, status]);
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current) {
       return;
     }
 
-    setRoomStatusOverlay(
+    refreshRoomStatus(
       mapRef.current,
       floor,
       document.getElementById(mapId),
       showGroupRoomColors,
     );
-  }, [floor, mapId, showGroupRoomColors, status]);
+  }, [floor, mapId, refreshRoomStatus, showGroupRoomColors, status]);
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current) {
@@ -837,39 +1131,31 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
 
   return (
     <div className="relative overflow-hidden rounded-lg border border-white/10 bg-surface-900">
-      <div id={mapId} className="h-[420px] min-h-[420px] w-full bg-surface-850" />
-      <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-lg border border-white/10 bg-surface-950/90 px-3 py-2 text-xs text-slate-300 shadow-lg">
-        <span className="font-medium text-white">MazeMap</span>
-        <span className="ml-2 text-slate-400">{selectedRoomId ? 'Room selected' : 'Click a room'}</span>
+      <div id={mapId} className="h-[60vh] min-h-[360px] w-full bg-surface-850 lg:h-[min(680px,calc(100vh-220px))]" />
+      <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[60%] truncate rounded-md border border-white/10 bg-surface-950/90 px-2.5 py-1.5 text-xs text-slate-300 shadow-lg backdrop-blur-sm">
+        {selectedRoomId && selectedRoomName ? (
+          <span className="font-medium text-white">{selectedRoomName}</span>
+        ) : (
+          <span className="text-slate-300">Click a room</span>
+        )}
       </div>
       <button
         type="button"
         onClick={() => setShowGroupRoomColors((isVisible) => !isVisible)}
-        className={`absolute right-4 top-4 z-10 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm backdrop-blur-sm transition ${
+        className={`absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-md border bg-surface-950/90 px-2.5 py-1.5 text-xs font-medium shadow-lg backdrop-blur-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 ${
           showGroupRoomColors
-            ? 'border-cyan-400/50 bg-cyan-50 text-cyan-800 shadow-cyan-900/5'
-            : 'border-slate-300 bg-white/95 text-slate-600 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900'
+            ? 'border-cyan-300/40 text-cyan-100'
+            : 'border-white/10 text-slate-300 hover:text-white'
         }`}
         aria-pressed={showGroupRoomColors}
       >
-        Group room colors {showGroupRoomColors ? 'on' : 'off'}
+        <span
+          aria-hidden="true"
+          className={`h-1.5 w-1.5 rounded-full ${showGroupRoomColors ? 'bg-cyan-300' : 'bg-slate-500'}`}
+        />
+        Status colours
       </button>
-      {showGroupRoomColors ? (
-      <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-wrap gap-2 rounded-lg border border-white/10 bg-surface-950/90 px-3 py-2 text-xs text-slate-200 shadow-lg">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />
-          Available
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-yellow-300" />
-          Booked empty
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-rose-400" />
-          In use
-        </span>
-      </div>
-      ) : null}
+      {showGroupRoomColors ? <MapLegend className="absolute bottom-8 right-3 z-10" /> : null}
 
       {status === 'loading' ? (
         <div className="absolute inset-0 z-20 grid place-items-center bg-surface-950/80 text-sm text-slate-300">

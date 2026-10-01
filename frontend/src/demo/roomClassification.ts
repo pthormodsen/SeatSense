@@ -87,6 +87,9 @@ export const getStableMazeMapRoomKey = (
 
 export const getMazeMapRoomIdentity = getStableMazeMapRoomKey;
 
+// Only used for generated (unknown) rooms. Known SeatSense rooms get an
+// explicit `type` from mockCampus and never reach this function. Kronstad
+// metadata wins over polygon area. This decides room type only, never map colour.
 export const classifyMazeMapRoom = (room: MazeMapRoomSelection): RoomType => {
   const metadata = getKronstadRoomMetadata(room.title);
 

@@ -1,5 +1,6 @@
-import type { Building, Campus, Floor, OccupancySummary, ReadingRoom, Room, Seat } from '../types/campus';
+import type { Building, Campus, Floor, OccupancySummary, ReadingRoom, Room, RoomType, Seat } from '../types/campus';
 import { createDemoRoomFromMazeMap, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
+import { getSeatSenseMazeMapFloorForZLevel } from './mazeMapPlacements';
 
 const emptySummary: OccupancySummary = {
   available: 0,
@@ -10,13 +11,17 @@ const emptySummary: OccupancySummary = {
   occupancyPercent: 0,
 };
 
-const demoMazeRoom = (title: string, appFloorNumber: number, area: number): Room =>
-  createDemoRoomFromMazeMap({
-    title,
-    identifier: title,
-    floor: appFloorNumber,
-    area,
-  });
+// Room type is explicit for known rooms; it is never inferred from area.
+const demoMazeRoom = (title: string, appFloorNumber: number, area: number, type: RoomType): Room =>
+  createDemoRoomFromMazeMap(
+    {
+      title,
+      identifier: title,
+      floor: appFloorNumber,
+      area,
+    },
+    { type },
+  );
 
 export const campus: Campus = {
   id: 'campus-kronstad',
@@ -34,9 +39,9 @@ export const campus: Campus = {
           buildingId: 'kronstad',
           mazeMapFloor: 'M1',
           rooms: [
-            demoMazeRoom('M106', 1, 210),
-            demoMazeRoom('M107', 1, 42),
-            demoMazeRoom('M185', 1, 185),
+            demoMazeRoom('M106', 1, 210, 'reading-room'),
+            demoMazeRoom('M107', 1, 42, 'group-room'),
+            demoMazeRoom('M185', 1, 185, 'reading-room'),
           ],
         },
         {
@@ -45,9 +50,9 @@ export const campus: Campus = {
           buildingId: 'kronstad',
           mazeMapFloor: 'M2',
           rooms: [
-            demoMazeRoom('M205', 2, 46),
-            demoMazeRoom('M206', 2, 220),
-            demoMazeRoom('M285', 2, 165),
+            demoMazeRoom('M205', 2, 46, 'group-room'),
+            demoMazeRoom('M206', 2, 220, 'reading-room'),
+            demoMazeRoom('M285', 2, 165, 'reading-room'),
           ],
         },
         {
@@ -56,9 +61,9 @@ export const campus: Campus = {
           buildingId: 'kronstad',
           mazeMapFloor: 'M3',
           rooms: [
-            demoMazeRoom('M302', 3, 190),
-            demoMazeRoom('M306', 3, 260),
-            demoMazeRoom('M307', 3, 52),
+            demoMazeRoom('M302', 3, 190, 'reading-room'),
+            demoMazeRoom('M306', 3, 260, 'reading-room'),
+            demoMazeRoom('M307', 3, 52, 'group-room'),
           ],
         },
         {
@@ -67,9 +72,9 @@ export const campus: Campus = {
           buildingId: 'kronstad',
           mazeMapFloor: 'M4',
           rooms: [
-            demoMazeRoom('M406', 4, 240),
-            demoMazeRoom('M407', 4, 180),
-            demoMazeRoom('M485', 4, 170),
+            demoMazeRoom('M406', 4, 240, 'reading-room'),
+            demoMazeRoom('M407', 4, 180, 'reading-room'),
+            demoMazeRoom('M485', 4, 170, 'reading-room'),
           ],
         },
         {
@@ -78,8 +83,8 @@ export const campus: Campus = {
           buildingId: 'kronstad',
           mazeMapFloor: 'M5',
           rooms: [
-            demoMazeRoom('M506', 5, 240),
-            demoMazeRoom('M507', 5, 180),
+            demoMazeRoom('M506', 5, 240, 'reading-room'),
+            demoMazeRoom('M507', 5, 180, 'reading-room'),
           ],
         },
       ],
@@ -115,3 +120,20 @@ export const findRoom = (roomId: string): Room | undefined =>
     .flatMap((building) => building.floors)
     .flatMap((floor) => floor.rooms)
     .find((candidate) => candidate.id === roomId);
+
+// MazeMap reports floors as z-levels (2-6); map back to the SeatSense floor via
+// the central M1-M5 mapping. Never build `floor-${zLevel}` directly.
+export const findFloorByMazeMapZLevel = (zLevel: number): Floor | undefined => {
+  const mazeMapFloor = getSeatSenseMazeMapFloorForZLevel(zLevel);
+
+  if (!mazeMapFloor) {
+    return undefined;
+  }
+
+  return campus.buildings
+    .flatMap((building) => building.floors)
+    .find((floor) => floor.mazeMapFloor === mazeMapFloor);
+};
+
+export const getFloorIdForMazeMapZLevel = (zLevel: number): string | undefined =>
+  findFloorByMazeMapZLevel(zLevel)?.id;

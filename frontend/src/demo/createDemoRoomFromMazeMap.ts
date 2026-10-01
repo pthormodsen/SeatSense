@@ -5,6 +5,7 @@ import type {
   ReadingRoom,
   Room,
   RoomLayout,
+  RoomType,
   Seat,
 } from '../types/campus';
 
@@ -464,6 +465,7 @@ const createReadingRoomSeats = (
 const createDemoGroupRoom = (
   mazeRoom: MazeMapRoomSelection,
   seed: string,
+  floorId?: string,
 ): GroupRoom => {
   const name =
     getMazeMapRoomDisplayName(
@@ -501,10 +503,12 @@ const createDemoGroupRoom = (
 
     buildingId: 'kronstad',
 
-    floorId: `floor-${Math.max(
-      1,
-      mazeRoom.floor,
-    )}`,
+    floorId:
+      floorId ??
+      `floor-${Math.max(
+        1,
+        mazeRoom.floor,
+      )}`,
 
     capacity,
 
@@ -545,6 +549,7 @@ const createDemoGroupRoom = (
 const createDemoReadingRoom = (
   mazeRoom: MazeMapRoomSelection,
   seed: string,
+  floorId?: string,
 ): ReadingRoom => {
   const name =
     getMazeMapRoomDisplayName(
@@ -610,10 +615,12 @@ const createDemoReadingRoom = (
 
     buildingId: 'kronstad',
 
-    floorId: `floor-${Math.max(
-      1,
-      mazeRoom.floor,
-    )}`,
+    floorId:
+      floorId ??
+      `floor-${Math.max(
+        1,
+        mazeRoom.floor,
+      )}`,
 
     capacity: seats.length,
 
@@ -640,8 +647,24 @@ const createDemoReadingRoom = (
 |--------------------------------------------------------------------------
 */
 
+export interface CreateDemoRoomOptions {
+  /*
+   * SeatSense floor id (e.g. 'floor-1'). Pass this when the caller knows
+   * the app floor, because `mazeRoom.floor` may be a MazeMap z-level.
+   * Not part of any seed, so it never changes generated values.
+   */
+  floorId?: string;
+
+  /*
+   * Explicit room type (e.g. from known room data). Overrides metadata-based
+   * classification. Not part of any seed.
+   */
+  type?: RoomType;
+}
+
 export const createDemoRoomFromMazeMap = (
   mazeRoom: MazeMapRoomSelection,
+  options: CreateDemoRoomOptions = {},
 ): Room => {
   const seed =
     getMazeMapRoomIdentity(
@@ -649,6 +672,7 @@ export const createDemoRoomFromMazeMap = (
     );
 
   const type =
+    options.type ??
     classifyMazeMapRoom(
       mazeRoom,
     );
@@ -657,10 +681,12 @@ export const createDemoRoomFromMazeMap = (
     ? createDemoGroupRoom(
         mazeRoom,
         seed,
+        options.floorId,
       )
     : createDemoReadingRoom(
         mazeRoom,
         seed,
+        options.floorId,
       );
 };
 

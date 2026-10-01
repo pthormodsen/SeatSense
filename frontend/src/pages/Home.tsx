@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import BuildingCard from '../components/BuildingCard';
 import StatCard from '../components/StatCard';
 import { seatService } from '../services/seatService';
+import { formatDemoSnapshotTime } from '../utils/demoTime';
 
 const Home = () => {
   const campus = seatService.getCampus();
@@ -16,7 +17,7 @@ const Home = () => {
             Find an available study seat before walking around looking for one.
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-            SeatSense shows live room-by-room study seat availability using desk presence sensors connected to ESP32 nodes.
+            SeatSense shows room-by-room study seat availability using desk presence sensors connected to ESP32 nodes. This prototype currently uses demo data.
           </p>
           <Link
             to="/building/kronstad"
@@ -26,9 +27,9 @@ const Home = () => {
           </Link>
         </div>
         <div className="rounded-lg border border-white/10 bg-surface-850 p-5">
-          <p className="text-sm text-slate-400">Live campus overview</p>
+          <p className="text-sm text-slate-400">Campus overview</p>
           <p className="mt-3 text-4xl font-semibold text-emerald-200">{summary.available}</p>
-          <p className="mt-1 text-slate-300">available seats right now</p>
+          <p className="mt-1 text-slate-300">available seats (demo snapshot)</p>
         </div>
       </section>
 
@@ -42,7 +43,7 @@ const Home = () => {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-white">Buildings</h2>
-          <span className="text-sm text-slate-400">Updated 4 seconds ago</span>
+          <span className="text-sm text-slate-400">{formatDemoSnapshotTime()}</span>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {campus.buildings.map((building) => (

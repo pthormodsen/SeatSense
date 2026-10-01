@@ -4,30 +4,12 @@ import RoomMap from '../components/RoomMap';
 import SeatDetails from '../components/SeatDetails';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
-import {
-  createDemoRoomFromMazeMap,
-  mazeMapRoomFromSearchParams,
-  summarizeReadingSeats,
-} from '../demo/createDemoRoomFromMazeMap';
+import { DEMO_REFERENCE_NOW_MS, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
 import { seatService } from '../services/seatService';
 import type { ReadingRoom, Room as RoomType, Seat } from '../types/campus';
+import { formatDemoSnapshotDateTime } from '../utils/demoTime';
 import { getGroupRoomStatus } from '../utils/roomStatus';
 import { getSeatStatus } from '../utils/seatStatus';
-
-const formatRelativeTime = (isoTime: string, nowMs: number) => {
-  const diffSeconds = Math.max(0, Math.floor((nowMs - new Date(isoTime).getTime()) / 1000));
-
-  if (diffSeconds < 2) {
-    return 'just now';
-  }
-
-  if (diffSeconds < 60) {
-    return `${diffSeconds} seconds ago`;
-  }
-
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  return diffMinutes === 1 ? '1 minute ago' : `${diffMinutes} minutes ago`;
-};
 
 const createRoomFromRoute = (roomId: string | undefined, searchParams: URLSearchParams): RoomType | undefined => {
   if (!roomId) {
@@ -44,11 +26,16 @@ const createRoomFromRoute = (roomId: string | undefined, searchParams: URLSearch
     return undefined;
   }
 
-  return createDemoRoomFromMazeMap(mazeMapRoomFromSearchParams(roomId, searchParams));
+  return seatService.resolveRoomFromSearchParams(roomId, searchParams);
 };
 
-const getRoomStatusNowMs = (room: RoomType | undefined) =>
-  room ? Date.parse(room.updatedAt) : Date.now();
+// Status is derived against the fixed demo clock (same as the Floor side panel),
+// so the page renders identically on every load.
+const getRoomStatusNowMs = () => DEMO_REFERENCE_NOW_MS;
+
+// Each simulation step advances the demo clock by a fixed amount instead of
+// reading the real clock, keeping the simulation deterministic.
+const SIMULATION_STEP_MS = 60 * 1000;
 
 const rotateSeatState = (seat: Seat, index: number, updatedAt: Date): Seat => {
   if (!seat.sensorOnline || index % 5 !== 0) {
@@ -90,15 +77,13 @@ const Room = () => {
   const [room, setRoom] = useState<RoomType | undefined>(routeRoom);
   const [seats, setSeats] = useState<Seat[]>(routeRoom?.type === 'reading-room' ? routeRoom.seats : []);
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(routeRoom?.type === 'reading-room' ? routeRoom.seats[0]?.id ?? null : null);
-  const [roomUpdatedAt, setRoomUpdatedAt] = useState(routeRoom?.updatedAt ?? new Date().toISOString());
-  const [nowMs, setNowMs] = useState(getRoomStatusNowMs(routeRoom));
+  const [nowMs, setNowMs] = useState(getRoomStatusNowMs());
 
   useEffect(() => {
     setRoom(routeRoom);
     setSeats(routeRoom?.type === 'reading-room' ? routeRoom.seats : []);
     setSelectedSeatId(routeRoom?.type === 'reading-room' ? routeRoom.seats[0]?.id ?? null : null);
-    setRoomUpdatedAt(routeRoom?.updatedAt ?? new Date().toISOString());
-    setNowMs(getRoomStatusNowMs(routeRoom));
+    setNowMs(getRoomStatusNowMs());
   }, [routeRoom]);
 
   if (!room) {
@@ -119,7 +104,7 @@ const Room = () => {
     : [];
 
   const simulateOccupancy = () => {
-    const updatedAt = new Date();
+    const updatedAt = new Date(nowMs + SIMULATION_STEP_MS);
 
     if (room.type === 'reading-room') {
       const updatedSeats = seats.map((seat, index) => rotateSeatState(seat, index, updatedAt));
@@ -142,7 +127,6 @@ const Room = () => {
       );
     }
 
-    setRoomUpdatedAt(updatedAt.toISOString());
     setNowMs(updatedAt.getTime());
   };
 
@@ -157,7 +141,7 @@ const Room = () => {
           <h1 className="mt-2 text-4xl font-semibold text-white">Room {room.name}</h1>
           <p className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-400">
             <span>{room.type === 'reading-room' ? 'Reading room' : 'Group room'}</span>
-            <span>Updated {formatRelativeTime(roomUpdatedAt, nowMs)}</span>
+            <span>{formatDemoSnapshotDateTime(nowMs)}</span>
           </p>
         </div>
         <button

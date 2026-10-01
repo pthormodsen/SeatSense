@@ -6,6 +6,8 @@ export interface MazeMapGlobal {
     zoom: number;
     zLevel: number;
     zLevelUpdater?: boolean;
+    zLevelUpdaterType?: 'buildingsInView' | 'buildingClosestToCenter' | 'userFocused';
+    zLevelControl?: boolean;
   }) => MazeMapInstance;
   Data?: {
     getPoi?: (poiId: number | string) => Promise<MazeMapFeature | false>;
@@ -51,6 +53,9 @@ export interface MazeMapInstance {
   addSource?: (id: string, source: Record<string, unknown>) => void;
   getLayer?: (id: string) => unknown;
   getSource?: (id: string) => { setData?: (data: MazeMapFeatureCollection) => void } | undefined;
+  zLevelControl?: {
+    setZLevels?: (zLevels: Record<number, string>) => void;
+  };
   isStyleLoaded?: () => boolean;
   loaded?: () => boolean;
   getZLevel?: () => number;

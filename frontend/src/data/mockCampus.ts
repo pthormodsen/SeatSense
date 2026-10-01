@@ -32,7 +32,7 @@ export const campus: Campus = {
           id: 'floor-1',
           name: 'Floor 1',
           buildingId: 'kronstad',
-          mazeMapZLevel: 1,
+          mazeMapFloor: 'M1',
           rooms: [
             demoMazeRoom('M106', 1, 210),
             demoMazeRoom('M107', 1, 42),
@@ -43,7 +43,7 @@ export const campus: Campus = {
           id: 'floor-2',
           name: 'Floor 2',
           buildingId: 'kronstad',
-          mazeMapZLevel: 2,
+          mazeMapFloor: 'M2',
           rooms: [
             demoMazeRoom('M205', 2, 46),
             demoMazeRoom('M206', 2, 220),
@@ -54,7 +54,7 @@ export const campus: Campus = {
           id: 'floor-3',
           name: 'Floor 3',
           buildingId: 'kronstad',
-          mazeMapZLevel: 3,
+          mazeMapFloor: 'M3',
           rooms: [
             demoMazeRoom('M302', 3, 190),
             demoMazeRoom('M306', 3, 260),
@@ -65,7 +65,7 @@ export const campus: Campus = {
           id: 'floor-4',
           name: 'Floor 4',
           buildingId: 'kronstad',
-          mazeMapZLevel: 4,
+          mazeMapFloor: 'M4',
           rooms: [
             demoMazeRoom('M406', 4, 240),
             demoMazeRoom('M407', 4, 180),
@@ -76,7 +76,7 @@ export const campus: Campus = {
           id: 'floor-5',
           name: 'Floor 5',
           buildingId: 'kronstad',
-          mazeMapZLevel: 5,
+          mazeMapFloor: 'M5',
           rooms: [
             demoMazeRoom('M506', 5, 240),
             demoMazeRoom('M507', 5, 180),

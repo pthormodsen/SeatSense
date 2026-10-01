@@ -1,5 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { floorMapView, getMazeMapZLevelForFloor, KRONSTAD_CAMPUS_ID } from '../data/mazeMapPlacements';
+import {
+  floorMapView,
+  getMazeMapZLevelForFloor,
+  KRONSTAD_CAMPUS_ID,
+  mBuildingMazeMapZLevelLabels,
+} from '../data/mazeMapPlacements';
 import { createDemoRoomFromMazeMap } from '../demo/createDemoRoomFromMazeMap';
 import { getMazeMapRoomCode } from '../demo/roomClassification';
 import type { Floor } from '../types/campus';
@@ -401,7 +406,7 @@ const createRoomStatusFeatureCollection = (
     [0, 0],
     [mapElement.clientWidth, mapElement.clientHeight],
   ]);
-  const currentZLevel = map.getZLevel?.() ?? floor.mazeMapZLevel ?? getMazeMapZLevelForFloor(floor.name);
+  const currentZLevel = map.getZLevel?.() ?? getMazeMapZLevelForFloor(floor);
   const labels = getRoomLabelFeatures(renderedFeatures);
   const polygonFeatures = getRoomPolygonFeatures(renderedFeatures);
 
@@ -570,7 +575,12 @@ const syncMapToFloor = (map: MazeMapInstance, zLevel: number) => {
   }
 };
 
+const syncMBuildingFloorControl = (map: MazeMapInstance) => {
+  map.zLevelControl?.setZLevels?.(mBuildingMazeMapZLevelLabels);
+};
+
 const syncInitialMapView = (map: MazeMapInstance, zLevel: number) => {
+  syncMBuildingFloorControl(map);
   syncMapToFloor(map, zLevel);
   map.setCenter?.(floorMapView.center);
   map.setZoom?.(floorMapView.zoom);
@@ -607,7 +617,7 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [showGroupRoomColors, setShowGroupRoomColors] = useState(true);
   const showGroupRoomColorsRef = useRef(showGroupRoomColors);
-  const floorZLevel = floor.mazeMapZLevel ?? getMazeMapZLevelForFloor(floor.name);
+  const floorZLevel = getMazeMapZLevelForFloor(floor);
   const lastObservedZLevelRef = useRef(floorZLevel);
 
   showGroupRoomColorsRef.current = showGroupRoomColors;
@@ -628,7 +638,7 @@ const MazeMapFloorMap = ({ floor, selectedRoomId, onSelectRoom, onClearRoom, onF
           center: floorMapView.center,
           zoom: floorMapView.zoom,
           zLevel: floorZLevel,
-          zLevelUpdater: true,
+          zLevelUpdater: false,
         });
         mapRef.current = map;
 

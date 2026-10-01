@@ -1,6 +1,7 @@
 export type RoomType = 'group-room' | 'reading-room';
 export type SeatStatus = 'available' | 'occupied' | 'recently-used' | 'offline';
 export type GroupRoomStatus = 'available' | 'booked-unused' | 'booked-in-use';
+export type MazeMapFloor = 'M1' | 'M2' | 'M3' | 'M4' | 'M5';
 
 export interface Seat {
   id: string;
@@ -79,7 +80,7 @@ export interface Floor {
   id: string;
   name: string;
   buildingId: string;
-  mazeMapZLevel?: number;
+  mazeMapFloor: MazeMapFloor;
   rooms: Room[];
 }
 

@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 import { createDemoRoomFromMazeMap, mazeMapRoomToSearchParams, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
 import { getMazeMapZLevelForFloor } from '../data/mazeMapPlacements';
 import { seatService } from '../services/seatService';
-import type { Room } from '../types/campus';
+import type { OccupancySummary, ReadingRoom, Room } from '../types/campus';
 import { getGroupRoomStatus } from '../utils/roomStatus';
 
 const formatRelativeTime = (isoTime: string) => {
@@ -28,13 +28,42 @@ const formatRelativeTime = (isoTime: string) => {
 const mazeMapRoomLabel = (selection: MazeMapRoomSelection) =>
   selection.title;
 
-const formatGroupRoomBooking = (room: Room) => {
-  if (room.type !== 'group-room') {
-    return '';
-  }
+const isReadingHall = (room: Room): room is ReadingRoom =>
+  room.type === 'reading-room';
 
-  return room.booking ? `Booked ${room.booking.start}-${room.booking.end}` : 'Not booked';
-};
+interface ReadingHallCard {
+  room: ReadingRoom;
+  summary: OccupancySummary;
+  availableSeats: number | null;
+}
+
+const getReadingHallCards = (rooms: Room[]): ReadingHallCard[] =>
+  rooms
+    .filter(isReadingHall)
+    .map((room) => {
+      const summary = summarizeReadingSeats(room.seats);
+
+      return {
+        room,
+        summary,
+        availableSeats: summary.available,
+      };
+    })
+    .sort((a, b) => {
+      if (a.availableSeats === null && b.availableSeats === null) {
+        return a.room.name.localeCompare(b.room.name);
+      }
+
+      if (a.availableSeats === null) {
+        return 1;
+      }
+
+      if (b.availableSeats === null) {
+        return -1;
+      }
+
+      return b.availableSeats - a.availableSeats || a.room.name.localeCompare(b.room.name);
+    });
 
 const getBestFloorFromMazeMapCodes = (
   floors: NonNullable<ReturnType<typeof seatService.getBuilding>>['floors'],
@@ -85,7 +114,7 @@ const Floor = () => {
         ? {
             identifier: room.name,
             title: room.name,
-            floor: getMazeMapZLevelForFloor(floor.name),
+            floor: getMazeMapZLevelForFloor(floor),
             area: room.mazeMapArea,
           }
         : null,
@@ -116,7 +145,7 @@ const Floor = () => {
 
     const targetFloor =
       building.floors.find((candidate) =>
-        (candidate.mazeMapZLevel ?? getMazeMapZLevelForFloor(candidate.name)) === change.zLevel,
+        getMazeMapZLevelForFloor(candidate) === change.zLevel,
       )
       ?? getBestFloorFromMazeMapCodes(building.floors, change.roomCodes);
 
@@ -135,6 +164,7 @@ const Floor = () => {
   }
 
   const summary = seatService.summarizeRooms(floor.rooms);
+  const readingHallCards = getReadingHallCards(floor.rooms);
   const selectedMazeMapLabel = mazeMapSelection ? mazeMapRoomLabel(mazeMapSelection) : null;
   const selectedReadingSummary = selectedDemoRoom?.type === 'reading-room'
     ? summarizeReadingSeats(selectedDemoRoom.seats)
@@ -284,13 +314,11 @@ const Floor = () => {
         </div>
       </section>
 
-      {floor.rooms.length > 0 ? (
+      {readingHallCards.length > 0 ? (
       <section>
-        <h2 className="mb-4 text-xl font-semibold text-white">Study rooms and areas</h2>
+        <h2 className="mb-4 text-xl font-semibold text-white">Reading halls</h2>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {floor.rooms.map((room) => {
-            const roomSummary = room.type === 'reading-room' ? summarizeReadingSeats(room.seats) : null;
-            const groupStatus = room.type === 'group-room' ? getGroupRoomStatus(room) : null;
+          {readingHallCards.map(({ room, summary: roomSummary }) => {
             const isSelected = room.id === selectedRoomId;
 
             return (
@@ -309,25 +337,13 @@ const Floor = () => {
                     <p className="text-xs uppercase tracking-wide text-cyan-200">{floor.name}</p>
                     <h3 className="mt-2 text-lg font-semibold text-white">{room.name}</h3>
                   </div>
-                  {room.type === 'reading-room' && roomSummary ? (
-                    <span className="rounded-md bg-emerald-400/10 px-3 py-1 text-sm font-medium text-emerald-200">
-                      {roomSummary.available} free
-                    </span>
-                  ) : groupStatus ? (
-                    <StatusBadge status={groupStatus} kind="group-room" />
-                  ) : null}
+                  <span className="rounded-md bg-emerald-400/10 px-3 py-1 text-sm font-medium text-emerald-200">
+                    {roomSummary.available} free
+                  </span>
                 </div>
                 <p className="mt-3 text-sm text-slate-400">
-                  {room.type === 'reading-room' && roomSummary
-                    ? `${roomSummary.total} seats, ${roomSummary.occupied} occupied`
-                    : `${room.capacity} capacity`}
+                  {`${roomSummary.total} seats, ${roomSummary.occupied} occupied`}
                 </p>
-                {room.type === 'group-room' ? (
-                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-                    <span>{formatGroupRoomBooking(room)}</span>
-                    <span>{room.presenceDetected ? 'Presence detected' : 'No presence detected'}</span>
-                  </div>
-                ) : null}
               </button>
             );
           })}

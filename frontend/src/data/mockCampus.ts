@@ -40,7 +40,6 @@ export const campus: Campus = {
           mazeMapFloor: 'M1',
           rooms: [
             demoMazeRoom('M106', 1, 210, 'reading-room'),
-            demoMazeRoom('M107', 1, 42, 'group-room'),
             demoMazeRoom('M185', 1, 185, 'reading-room'),
           ],
         },
@@ -50,7 +49,6 @@ export const campus: Campus = {
           buildingId: 'kronstad',
           mazeMapFloor: 'M2',
           rooms: [
-            demoMazeRoom('M205', 2, 46, 'group-room'),
             demoMazeRoom('M206', 2, 220, 'reading-room'),
             demoMazeRoom('M285', 2, 165, 'reading-room'),
           ],
@@ -63,7 +61,6 @@ export const campus: Campus = {
           rooms: [
             demoMazeRoom('M302', 3, 190, 'reading-room'),
             demoMazeRoom('M306', 3, 260, 'reading-room'),
-            demoMazeRoom('M307', 3, 52, 'group-room'),
           ],
         },
         {

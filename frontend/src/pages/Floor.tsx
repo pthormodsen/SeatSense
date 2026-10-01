@@ -103,21 +103,30 @@ const Floor = () => {
     setSelectedDemoRoom(room);
   }, [floor]);
 
+  const clearMazeMapRoom = useCallback(() => {
+    setMazeMapSelection(null);
+    setSelectedRoomId(null);
+    setSelectedDemoRoom(null);
+  }, []);
+
   const selectMazeMapFloorLevel = useCallback((change: MazeMapFloorLevelChange) => {
     if (!building || !buildingId) {
       return;
     }
 
     const targetFloor =
-      getBestFloorFromMazeMapCodes(building.floors, change.roomCodes)
-      ?? building.floors.find((candidate) =>
+      building.floors.find((candidate) =>
         (candidate.mazeMapZLevel ?? getMazeMapZLevelForFloor(candidate.name)) === change.zLevel,
-      );
+      )
+      ?? getBestFloorFromMazeMapCodes(building.floors, change.roomCodes);
 
     if (!targetFloor || targetFloor.id === floorId) {
       return;
     }
 
+    setSelectedRoomId(null);
+    setMazeMapSelection(null);
+    setSelectedDemoRoom(null);
     navigate(`/building/${buildingId}/floor/${targetFloor.id}`);
   }, [building, buildingId, floorId, navigate]);
 
@@ -186,6 +195,7 @@ const Floor = () => {
             floor={floor}
             selectedRoomId={selectedRoomId}
             onSelectRoom={selectMazeMapRoom}
+            onClearRoom={clearMazeMapRoom}
             onFloorLevelChange={selectMazeMapFloorLevel}
           />
           <aside className="rounded-lg border border-white/10 bg-surface-850 p-5">

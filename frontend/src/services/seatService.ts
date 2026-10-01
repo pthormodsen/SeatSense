@@ -16,6 +16,7 @@ import {
   createDemoRoomFromMazeMap,
   mazeMapRoomFromSearchParams,
 } from '../demo/createDemoRoomFromMazeMap';
+import { getPopularTimesWeek, getTypicalStayText } from '../demo/popularTimes';
 
 const normalizeRoomName = (value?: string) => value?.trim().toLowerCase() ?? '';
 
@@ -72,4 +73,7 @@ export const seatService = {
   summarizeRooms,
   summarizeFloors,
   summarizeBuildings,
+  // Synthetic demo history for reading rooms (not measured data).
+  getPopularTimes: getPopularTimesWeek,
+  getTypicalStayText,
 };

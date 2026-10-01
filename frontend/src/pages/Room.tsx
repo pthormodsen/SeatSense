@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import PopularTimes from '../components/PopularTimes';
 import RoomMap from '../components/RoomMap';
 import SeatDetails from '../components/SeatDetails';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import { DEMO_REFERENCE_NOW_MS, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
+import { getDemoWeekdayAndHour } from '../demo/popularTimes';
 import { seatService } from '../services/seatService';
 import type { ReadingRoom, Room as RoomType, Seat } from '../types/campus';
 import { formatDemoSnapshotDateTime } from '../utils/demoTime';
@@ -79,6 +81,16 @@ const Room = () => {
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(routeRoom?.type === 'reading-room' ? routeRoom.seats[0]?.id ?? null : null);
   const [nowMs, setNowMs] = useState(getRoomStatusNowMs());
 
+  // Popular times only exist for reading rooms; recomputed per room id only.
+  const readingRoomId = room?.type === 'reading-room' ? room.id : null;
+  const popularTimes = useMemo(
+    () =>
+      readingRoomId
+        ? { days: seatService.getPopularTimes(readingRoomId), typicalStayText: seatService.getTypicalStayText(readingRoomId) }
+        : null,
+    [readingRoomId],
+  );
+
   useEffect(() => {
     setRoom(routeRoom);
     setSeats(routeRoom?.type === 'reading-room' ? routeRoom.seats : []);
@@ -94,6 +106,7 @@ const Room = () => {
   const selectedSeat = seats.find((seat) => seat.id === selectedSeatId) ?? null;
   const readingSummary = room.type === 'reading-room' ? summarizeReadingSeats(seats, nowMs) : null;
   const groupStatus = room.type === 'group-room' ? getGroupRoomStatus(room) : null;
+  const demoNow = getDemoWeekdayAndHour(nowMs);
   const statusCounts = readingSummary
     ? [
         { status: 'available' as const, count: readingSummary.available },
@@ -200,6 +213,16 @@ const Room = () => {
           <section className="grid gap-5 xl:grid-cols-[1fr_320px]">
             <RoomMap room={{ ...(room as ReadingRoom), seats }} seats={seats} selectedSeat={selectedSeat} nowMs={nowMs} onSelectSeat={(seat) => setSelectedSeatId(seat.id)} />
             <SeatDetails seat={selectedSeat} nowMs={nowMs} />
+            {popularTimes ? (
+              <PopularTimes
+                key={room.id}
+                days={popularTimes.days}
+                typicalStayText={popularTimes.typicalStayText}
+                nowWeekday={demoNow.weekday}
+                nowHour={demoNow.hour}
+                className="xl:col-start-1"
+              />
+            ) : null}
           </section>
         </>
       ) : null}

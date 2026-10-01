@@ -7,9 +7,11 @@ import MazeMapFloorMap, {
 } from '../components/MazeMapFloorMap';
 import DemoDataBadge from '../components/DemoDataBadge';
 import FloorSummary from '../components/FloorSummary';
+import PageHeader from '../components/PageHeader';
 import RoomCard from '../components/RoomCard';
 import RoomListControls, { GroupStatusControl } from '../components/RoomListControls';
 import SelectedRoomPanel from '../components/SelectedRoomPanel';
+import { focusRingClass } from '../components/uiStyles';
 import { mazeMapRoomToSearchParams, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
 import { getMazeMapZLevelForFloor } from '../data/mazeMapPlacements';
 import { seatService } from '../services/seatService';
@@ -66,7 +68,7 @@ const SectionToggleButton = ({ expanded, controlsId, label, onToggle }: SectionT
     onClick={onToggle}
     aria-expanded={expanded}
     aria-controls={controlsId}
-    className="rounded-md border border-white/10 p-1.5 text-slate-400 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
+    className={`rounded-md border border-white/10 p-1.5 text-slate-400 transition hover:border-white/20 hover:text-white ${focusRingClass}`}
   >
     <span className="sr-only">{expanded ? `Collapse ${label}` : `Expand ${label}`}</span>
     <svg
@@ -267,29 +269,21 @@ const Floor = () => {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-3">
-        <nav aria-label="Breadcrumb">
-          <ol className="flex flex-wrap items-center gap-1.5 text-sm text-slate-400">
-            <li>
-              <Link to="/" className="hover:text-cyan-100">Campus</Link>
-            </li>
-            <li aria-hidden="true">›</li>
-            <li>
-              <Link to={`/building/${building.id}`} className="text-cyan-200 hover:text-cyan-100">
-                {building.name}
-              </Link>
-            </li>
-            <li aria-hidden="true">›</li>
-            <li aria-current="page" className="text-slate-300">{floor.name}</li>
-          </ol>
-        </nav>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-3xl font-semibold text-white">{floor.name}</h1>
+      <PageHeader
+        breadcrumbs={[
+          { label: building.campusName, to: '/' },
+          { label: building.name, to: `/building/${building.id}` },
+          { label: floor.name },
+        ]}
+        title={(
+          <>
+            {floor.name}
             <span className="rounded border border-white/10 px-1.5 py-0.5 text-xs font-medium text-slate-400">
               {floor.mazeMapFloor}
             </span>
-          </div>
+          </>
+        )}
+        actions={(
           <nav aria-label="Floor selector" className="flex flex-wrap gap-1.5">
             {building.floors.map((buildingFloor) => {
               const isCurrentFloor = buildingFloor.id === floor.id;
@@ -298,7 +292,7 @@ const Floor = () => {
                 <Link
                   key={buildingFloor.id}
                   to={`/building/${building.id}/floor/${buildingFloor.id}`}
-                  className={`rounded-md border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 ${
+                  className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${focusRingClass} ${
                     isCurrentFloor
                       ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-100'
                       : 'border-white/10 text-slate-300 hover:border-white/20 hover:text-white'
@@ -310,8 +304,8 @@ const Floor = () => {
               );
             })}
           </nav>
-        </div>
-      </header>
+        )}
+      />
 
       <FloorSummary
         summary={summary}

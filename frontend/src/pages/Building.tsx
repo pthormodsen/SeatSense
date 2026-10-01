@@ -1,6 +1,9 @@
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
+import AvailabilitySummary from '../components/AvailabilitySummary';
+import DemoDataBadge from '../components/DemoDataBadge';
 import FloorCard from '../components/FloorCard';
-import StatCard from '../components/StatCard';
+import PageHeader from '../components/PageHeader';
+import { cardClass } from '../components/uiStyles';
 import { seatService } from '../services/seatService';
 
 const Building = () => {
@@ -15,24 +18,19 @@ const Building = () => {
 
   return (
     <div className="space-y-8">
-      <div>
-        <Link to="/" className="text-sm text-cyan-200 hover:text-cyan-100">
-          Back to dashboard
-        </Link>
-        <p className="mt-4 text-sm uppercase tracking-wide text-cyan-200">{building.campusName}</p>
-        <h1 className="mt-2 text-4xl font-semibold text-white">{building.name}</h1>
-        <p className="mt-3 max-w-2xl text-slate-300">{building.description}</p>
-      </div>
+      <PageHeader
+        breadcrumbs={[{ label: building.campusName, to: '/' }, { label: building.name }]}
+        title={building.name}
+        description={building.description}
+        actions={<DemoDataBadge />}
+      />
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Available" value={summary.available} />
-        <StatCard label="Occupied" value={summary.occupied} />
-        <StatCard label="Total seats" value={summary.total} />
-        <StatCard label="Occupancy" value={`${summary.occupancyPercent}%`} />
+      <section aria-label="Building availability" className={`${cardClass} p-5`}>
+        <AvailabilitySummary summary={summary} />
       </section>
 
-      <section>
-        <h2 className="mb-4 text-xl font-semibold text-white">Floors</h2>
+      <section aria-labelledby="floors-heading">
+        <h2 id="floors-heading" className="mb-3 text-lg font-semibold text-white">Floors</h2>
         <div className="grid gap-4 md:grid-cols-2">
           {building.floors.map((floor) => (
             <FloorCard key={floor.id} floor={floor} />

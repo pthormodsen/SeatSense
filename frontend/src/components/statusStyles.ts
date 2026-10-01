@@ -93,5 +93,3 @@ export const readingRoomAvailabilityStyles: Record<ReadingRoomAvailability, Stat
     badge: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
   },
 };
-
-export const statusStyles = seatStatusStyles;

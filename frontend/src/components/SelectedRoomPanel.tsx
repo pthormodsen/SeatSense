@@ -5,6 +5,7 @@ import type { GroupRoom, ReadingRoom, Room } from '../types/campus';
 import { getGroupRoomStatus } from '../utils/roomStatus';
 import OccupancyBar from './OccupancyBar';
 import { groupRoomStatusStyles } from './statusStyles';
+import { focusRingClass, primaryButtonClass } from './uiStyles';
 
 interface SelectedRoomPanelProps {
   room: Room | null;
@@ -15,8 +16,6 @@ interface SelectedRoomPanelProps {
 }
 
 const typeChipClass = 'inline-flex rounded border border-white/10 px-1.5 py-0.5 text-xs font-medium text-slate-400';
-const primaryButtonClass =
-  'inline-flex w-full justify-center rounded-md bg-cyan-300 px-3 py-2 text-sm font-semibold text-surface-950 transition hover:bg-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-850';
 
 const SelectedRoomPanel = forwardRef<HTMLElement, SelectedRoomPanelProps>(
   ({ room, detailHref, quickPicks, onSelectRoom }, ref) => (
@@ -64,7 +63,7 @@ const EmptyPanel = ({ quickPicks, onSelectRoom }: Pick<SelectedRoomPanelProps, '
               <button
                 type="button"
                 onClick={() => onSelectRoom(pick.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-md border border-white/10 px-3 py-2 text-left text-sm text-slate-200 transition hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
+                className={`flex w-full items-center justify-between gap-3 rounded-md border border-white/10 px-3 py-2 text-left text-sm text-slate-200 transition hover:border-white/20 hover:text-white ${focusRingClass}`}
               >
                 <span className="truncate font-medium">{pick.name}</span>
                 <QuickPickStatus room={pick} />
@@ -100,7 +99,10 @@ const QuickPickStatus = ({ room }: { room: Room }) => {
 const DetailLink = ({ href }: { href: string | null }) =>
   href ? (
     <div className="mt-auto pt-5">
-      <Link to={href} className={primaryButtonClass}>
+      <Link
+        to={href}
+        className={`${primaryButtonClass} w-full justify-center focus-visible:ring-offset-2 focus-visible:ring-offset-surface-850`}
+      >
         View details
       </Link>
     </div>

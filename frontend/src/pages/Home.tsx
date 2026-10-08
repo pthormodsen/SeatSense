@@ -60,7 +60,7 @@ const BestFloorCard = ({ pick }: { pick: FloorPick }) => (
 );
 
 // Endless strip of per-floor availability. The duplicate half is hidden from
-// assistive tech, and the strip pauses on hover or focus.
+// assistive tech.
 const Ticker = ({ picks }: { picks: FloorPick[] }) => {
   const items = picks.map((pick) => (
     <li key={`${pick.building.id}-${pick.floor.id}`} className="flex shrink-0 items-center gap-4">
@@ -73,8 +73,8 @@ const Ticker = ({ picks }: { picks: FloorPick[] }) => {
   ));
 
   return (
-    <section aria-label="Free seats per floor" className="group overflow-hidden border-y border-white/10 py-6 sm:py-8">
-      <div className="flex w-max animate-marquee gap-0 group-hover:[animation-play-state:paused]">
+    <section aria-label="Free seats per floor" className="overflow-hidden border-y border-white/10 py-6 sm:py-8">
+      <div className="flex w-max animate-marquee gap-0">
         <ul className="flex shrink-0 items-center">{items}</ul>
         <ul aria-hidden="true" className="flex shrink-0 items-center">{items}</ul>
       </div>

@@ -36,7 +36,6 @@ export default {
         'line-up': { from: { transform: 'translateY(105%)' }, to: { transform: 'translateY(0)' } },
         marquee: { from: { transform: 'translateX(0)' }, to: { transform: 'translateX(-50%)' } },
         curtain: { '0%': { transform: 'translateY(0)' }, '100%': { transform: 'translateY(-101%)' } },
-        'intro-out': { '0%': { transform: 'translateY(0)' }, '100%': { transform: 'translateY(-101%)' } },
       },
       animation: {
         'fade-up': 'fade-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both',

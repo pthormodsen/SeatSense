@@ -206,15 +206,6 @@ html {
   }
 }
 
-@keyframes intro-out {
-  from {
-    transform: translateY(0);
-  }
-
-  to {
-    transform: translateY(-101%);
-  }
-}
 
 @keyframes shimmer {
   100% {

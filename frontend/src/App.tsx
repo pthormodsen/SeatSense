@@ -1,7 +1,6 @@
 import { useRef } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import Footer from './components/Footer';
-import Intro from './components/Intro';
 import Navbar from './components/Navbar';
 import NotFound from './components/NotFound';
 import ScrollToTop from './components/ScrollToTop';
@@ -18,7 +17,7 @@ const getTransitionKey = (pathname: string) => pathname.replace(/\/floor\/[^/]+$
 const App = () => {
   const { pathname } = useLocation();
   const transitionKey = getTransitionKey(pathname);
-  // The wipe only plays on navigation; the first render has the intro instead.
+  // The wipe only plays on navigation, not on the first render.
   const firstKey = useRef(transitionKey);
   const isNavigation = transitionKey !== firstKey.current;
 
@@ -31,7 +30,6 @@ const App = () => {
         >
           Skip to content
         </a>
-        <Intro />
         <ScrollToTop />
         <Navbar />
         {isNavigation ? <div key={`curtain-${transitionKey}`} aria-hidden="true" className="route-curtain" /> : null}

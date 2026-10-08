@@ -973,7 +973,13 @@ const MazeMapFloorMap = ({
 
     return () => {
       isMounted = false;
-      mapRef.current?.remove?.();
+
+      try {
+        mapRef.current?.remove?.();
+      } catch {
+        // A map torn down mid-load can throw; never let that unmount the page.
+      }
+
       mapRef.current = null;
     };
   }, [mapId]);
@@ -1011,7 +1017,12 @@ const MazeMapFloorMap = ({
 
     const clearHover = () => {
       hoveredPoint = '';
-      setHoverRoomHighlight(map, null);
+
+      try {
+        setHoverRoomHighlight(map, null);
+      } catch {
+        // The map may already be removed (this also runs on cleanup).
+      }
 
       if (canvas) {
         canvas.style.cursor = '';
@@ -1022,9 +1033,18 @@ const MazeMapFloorMap = ({
     map.on?.('mouseout', clearHover);
 
     return () => {
-      map.off?.('mousemove', handleMove);
-      map.off?.('mouseout', clearHover);
-      clearHover();
+      // Cleanup can run after the map-creation effect removed the map, so
+      // everything here is guarded.
+      try {
+        map.off?.('mousemove', handleMove);
+        map.off?.('mouseout', clearHover);
+      } catch {
+        // Already removed.
+      }
+
+      if (canvas) {
+        canvas.style.cursor = '';
+      }
     };
   }, [floorZLevel, mapId, status]);
 

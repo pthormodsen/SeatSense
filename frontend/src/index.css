@@ -4,20 +4,220 @@
 
 :root {
   color-scheme: dark;
-  background: #0b0f14;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #080808;
+  font-family: 'Inter Tight Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 32rem),
-    linear-gradient(180deg, #0b0f14 0%, #101720 100%);
+  background: #080808;
+}
+
+/* Display type: tight, large, confident. */
+h1,
+h2,
+h3 {
+  font-family: 'Inter Tight Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
 
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  /* Page enter: runs once per route (the wrapper is keyed by pathname). */
+  .page-enter {
+    animation: fade-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Staggered entrance for grids; set --i on each child. */
+  .stagger > * {
+    animation: fade-up 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+}
+
+::selection {
+  background: rgba(103, 232, 249, 0.3);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer components {
+  /* Serif italic accent word inside a display heading. */
+  .accent-serif {
+    font-family: 'Instrument Serif', ui-serif, Georgia, serif;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  .eyebrow {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(148 163 184);
+  }
+
+  /* Headline lines slide up from a mask. Set --d for the delay. */
+  .line-mask {
+    display: block;
+    overflow: hidden;
+    padding-bottom: 0.08em;
+    margin-bottom: -0.08em;
+  }
+
+  .line-mask > span {
+    display: block;
+    animation: line-up 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--d, 0ms);
+  }
+
+  /* Scroll reveal, toggled by the Reveal component. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 700ms ease-out, transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--d, 0ms);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Full-screen wipe that plays on each page change. */
+  .route-curtain {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    background: #0e0e0e;
+    animation: curtain 650ms cubic-bezier(0.76, 0, 0.24, 1) both;
+  }
+
+  /* Pill button with an arrow disc that sweeps in on hover. */
+  .arrow-disc {
+    display: inline-grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    background: #080808;
+    color: #f6f3ec;
+    transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .group:hover .arrow-disc {
+    transform: translateX(3px) rotate(-45deg);
+  }
+
+  /* Subtle film grain over the whole page. */
+  .grain::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  /* Underline that draws in from the left. */
+  .link-underline {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-size: 0% 1px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-size 350ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .link-underline:hover,
+  .link-underline[aria-current='page'] {
+    background-size: 100% 1px;
+  }
+}
+
+/* Declared here (not only in tailwind.config.js): Tailwind drops keyframes that
+   no `animate-*` utility references, and these are used from plain CSS or
+   inline styles. */
+@keyframes curtain {
+  0% {
+    transform: translateY(0);
+    visibility: visible;
+  }
+
+  99% {
+    visibility: visible;
+  }
+
+  100% {
+    transform: translateY(-101%);
+    visibility: hidden;
+  }
+}
+
+@keyframes line-up {
+  from {
+    transform: translateY(105%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes intro-out {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-101%);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }

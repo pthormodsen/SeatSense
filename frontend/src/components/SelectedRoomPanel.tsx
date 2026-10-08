@@ -43,7 +43,7 @@ const Swatch = ({ className }: { className: string }) => (
 );
 
 const EmptyPanel = ({ quickPicks, onSelectRoom }: Pick<SelectedRoomPanelProps, 'quickPicks' | 'onSelectRoom'>) => (
-  <div className="flex flex-1 flex-col">
+  <div className="flex flex-1 animate-fade-in flex-col">
     <h2 className="text-xl font-semibold text-white">Choose a room</h2>
     <p className="mt-2 text-sm text-slate-400">
       Select a room on the map or from the list below.{' '}
@@ -120,7 +120,7 @@ const ReadingRoomPanel = ({ room, detailHref }: { room: ReadingRoom; detailHref:
     .join(' · ');
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 animate-fade-in flex-col">
       <span className={`${typeChipClass} self-start`}>Reading room</span>
       <h2 className="mt-2 text-xl font-semibold text-white">{room.name}</h2>
       <p className="mt-4">
@@ -145,7 +145,7 @@ const GroupRoomPanel = ({ room, detailHref }: { room: GroupRoom; detailHref: str
       : 'Not booked';
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 animate-fade-in flex-col">
       <span className={`${typeChipClass} self-start`}>Group room</span>
       <h2 className="mt-2 text-xl font-semibold text-white">{room.name}</h2>
       <span className={`mt-4 inline-flex items-center gap-2 self-start rounded-md border px-3 py-1.5 text-base font-medium ${status.badge}`}>

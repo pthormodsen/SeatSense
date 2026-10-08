@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import MazeMapFloorMap, {
   type DiscoveredMazeMapRoom,
   type MazeMapFloorLevelChange,
@@ -7,11 +7,12 @@ import MazeMapFloorMap, {
 } from '../components/MazeMapFloorMap';
 import DemoDataBadge from '../components/DemoDataBadge';
 import FloorSummary from '../components/FloorSummary';
+import NotFound from '../components/NotFound';
 import PageHeader from '../components/PageHeader';
 import RoomCard from '../components/RoomCard';
 import RoomListControls, { GroupStatusControl } from '../components/RoomListControls';
 import SelectedRoomPanel from '../components/SelectedRoomPanel';
-import { focusRingClass } from '../components/uiStyles';
+import { focusRingClass, secondaryButtonClass } from '../components/uiStyles';
 import { mazeMapRoomToSearchParams, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
 import { getMazeMapZLevelForFloor } from '../data/mazeMapPlacements';
 import { seatService } from '../services/seatService';
@@ -157,6 +158,7 @@ const Floor = () => {
   const [typeFilter, setTypeFilter] = useState<RoomTypeFilter>('all');
   const [groupStatusFilter, setGroupStatusFilter] = useState<GroupRoomStatusFilter>('all');
   const [sortKey, setSortKey] = useState<RoomSortKey>('availability');
+  const [roomQuery, setRoomQuery] = useState('');
   // View-only; kept across floor changes and independent of selection.
   const [isReadingRoomsExpanded, setIsReadingRoomsExpanded] = useState(true);
   const [isGroupRoomsExpanded, setIsGroupRoomsExpanded] = useState(true);
@@ -246,7 +248,7 @@ const Floor = () => {
   }, [building, buildingId, floorId, navigate]);
 
   if (!building || !floor) {
-    return <Navigate to="/" replace />;
+    return <NotFound title="Floor not found" message="This floor doesn’t exist in SeatSense." />;
   }
 
   // Seat totals only cover known reading rooms with tracked seats.
@@ -258,8 +260,11 @@ const Floor = () => {
 
   const showReadingRooms = typeFilter !== 'group-room';
   const showGroupRooms = typeFilter !== 'reading-room';
-  const listedReadingRooms = sortReadingRooms(readingRooms, sortKey);
-  const listedGroupRooms = sortGroupRooms(filterGroupRoomsByStatus(groupRooms, groupStatusFilter), sortKey);
+  const query = roomQuery.trim().toLowerCase();
+  const matchesQuery = (room: Room) => query === '' || room.name.toLowerCase().includes(query);
+  const listedReadingRooms = sortReadingRooms(readingRooms.filter(matchesQuery), sortKey);
+  const listedGroupRooms = sortGroupRooms(filterGroupRoomsByStatus(groupRooms.filter(matchesQuery), groupStatusFilter), sortKey);
+  const hasNoSearchResults = query !== '' && listedReadingRooms.length === 0 && listedGroupRooms.length === 0;
 
   const isKnownSelectedRoom = selectedRoom ? seatService.getRoom(selectedRoom.id) !== undefined : false;
   const roomDetailSearch = !isKnownSelectedRoom && mazeMapSelection
@@ -340,9 +345,11 @@ const Floor = () => {
       <section aria-labelledby="rooms-heading" className="space-y-6 border-t border-white/10 pt-8">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-            <h2 id="rooms-heading" className="text-xl font-semibold text-white">Rooms on {floor.name}</h2>
+            <h2 id="rooms-heading" className="text-3xl font-semibold tracking-tight text-white">Rooms on {floor.name}</h2>
             {rooms.length > 0 ? (
               <RoomListControls
+                query={roomQuery}
+                onQueryChange={setRoomQuery}
                 typeFilter={typeFilter}
                 onTypeFilterChange={setTypeFilter}
                 sortKey={sortKey}
@@ -355,6 +362,14 @@ const Floor = () => {
 
         {rooms.length === 0 ? (
           <p className="text-sm text-slate-400">No rooms are listed for this floor yet. Click a room on the map to inspect it.</p>
+        ) : hasNoSearchResults ? (
+          <div className="rounded-lg border border-dashed border-white/10 px-4 py-8 text-center">
+            <p className="font-medium text-white">No rooms match “{roomQuery.trim()}”</p>
+            <p className="mt-1 text-sm text-slate-400">Check the room number, or pan the map to find more rooms on this floor.</p>
+            <button type="button" onClick={() => setRoomQuery('')} className={`${secondaryButtonClass} mt-4`}>
+              Clear search
+            </button>
+          </div>
         ) : (
           <>
             {showReadingRooms ? (
@@ -370,10 +385,11 @@ const Floor = () => {
                 <div id={READING_ROOMS_LIST_ID} hidden={!isReadingRoomsExpanded}>
                   {isReadingRoomsExpanded ? (
                     listedReadingRooms.length > 0 ? (
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {listedReadingRooms.map((room) => (
+                      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {listedReadingRooms.map((room, index) => (
                           <RoomCard
                             key={room.id}
+                            index={index}
                             room={room}
                             selected={room.id === selectedRoomId}
                             onSelect={selectRoomFromList}
@@ -409,7 +425,7 @@ const Floor = () => {
                         </div>
                       ) : null}
                       {listedGroupRooms.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                           {listedGroupRooms.map((room) => (
                             <RoomCard
                               key={room.id}

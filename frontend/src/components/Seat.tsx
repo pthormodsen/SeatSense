@@ -16,7 +16,7 @@ const Seat = ({ seat, selected, nowMs, onSelect }: SeatProps) => {
   return (
     <button
       type="button"
-      className="group outline-none"
+      className="group rounded-full outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80"
       style={{ transform: `translate(${seat.x}px, ${seat.y}px)` }}
       onClick={() => onSelect(seat)}
       aria-label={`${seat.id} ${styles.label}`}
@@ -26,7 +26,7 @@ const Seat = ({ seat, selected, nowMs, onSelect }: SeatProps) => {
           cx="17"
           cy="17"
           r={selected ? 13 : 11}
-          className={`${styles.seat} transition-all group-hover:stroke-white`}
+          className={`${styles.seat} origin-center transition-all duration-200 group-hover:stroke-white`}
           strokeWidth={selected ? 4 : 2}
         />
         <text x="17" y="21" textAnchor="middle" className="fill-surface-950 text-[8px] font-bold">

@@ -8,20 +8,23 @@ interface FloorCardProps {
   floor: Floor;
 }
 
+// The free-seat count is the headline; everything else supports it.
 const FloorCard = ({ floor }: FloorCardProps) => {
   const summary = seatService.summarizeRooms(floor.rooms);
 
   return (
-    <Link to={`/building/${floor.buildingId}/floor/${floor.id}`} className={`${linkCardClass} p-5`}>
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">{floor.name}</h2>
-        <span className="text-sm text-slate-400">{floor.rooms.length} rooms</span>
+    <Link to={`/building/${floor.buildingId}/floor/${floor.id}`} className={`${linkCardClass} group p-6`}>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-lg font-medium text-white">{floor.name}</h2>
+        <span aria-hidden="true" className="text-slate-500 transition duration-300 group-hover:translate-x-1 group-hover:text-white">→</span>
       </div>
-      <p className="mt-3 text-sm text-slate-400">
-        <span className="text-2xl font-semibold text-emerald-200">{summary.available}</span>
-        <span className="ml-1.5">of {summary.total} seats free</span>
+      <p className="mt-8 text-7xl font-semibold leading-none tracking-tighter text-emerald-200 tabular-nums">
+        {summary.available}
       </p>
-      <div className="mt-3">
+      <p className="mt-2 text-sm text-slate-400">
+        of {summary.total} seats free · {floor.rooms.length} rooms
+      </p>
+      <div className="mt-5">
         <OccupancyBar summary={summary} size="sm" />
       </div>
     </Link>

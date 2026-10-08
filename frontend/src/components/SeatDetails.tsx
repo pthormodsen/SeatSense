@@ -23,7 +23,7 @@ const SeatDetails = ({ seat, nowMs }: SeatDetailsProps) => {
       : 'No recent presence';
 
   return (
-    <aside className="rounded-lg border border-white/10 bg-surface-850 p-5">
+    <aside key={seat.id} className="animate-fade-in rounded-lg border border-white/10 bg-surface-850 p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-slate-400">Seat ID</p>

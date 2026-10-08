@@ -21,6 +21,10 @@ const ROOM_STATUS_OUTLINE_LAYER_ID = 'seatsense-room-status-outline';
 const SELECTED_ROOM_SOURCE_ID = 'seatsense-selected-room';
 const SELECTED_ROOM_FILL_LAYER_ID = 'seatsense-selected-room-fill';
 const SELECTED_ROOM_OUTLINE_LAYER_ID = 'seatsense-selected-room-outline';
+const SELECTED_ROOM_CASING_LAYER_ID = 'seatsense-selected-room-casing';
+const HOVER_ROOM_SOURCE_ID = 'seatsense-hover-room';
+const HOVER_ROOM_FILL_LAYER_ID = 'seatsense-hover-room-fill';
+const HOVER_ROOM_OUTLINE_LAYER_ID = 'seatsense-hover-room-outline';
 
 export interface MazeMapRoomSelection {
   poiId?: number;
@@ -606,7 +610,11 @@ const setRoomStatusOverlay = (
 
   // Keep the selected-room highlight above the status overlay even if the
   // highlight layers happened to be added first.
-  const beforeId = map.getLayer?.(SELECTED_ROOM_FILL_LAYER_ID) ? SELECTED_ROOM_FILL_LAYER_ID : undefined;
+  const beforeId = map.getLayer?.(HOVER_ROOM_FILL_LAYER_ID)
+    ? HOVER_ROOM_FILL_LAYER_ID
+    : map.getLayer?.(SELECTED_ROOM_CASING_LAYER_ID)
+      ? SELECTED_ROOM_CASING_LAYER_ID
+      : undefined;
 
   try {
     map.addSource(ROOM_STATUS_SOURCE_ID, {
@@ -620,7 +628,7 @@ const setRoomStatusOverlay = (
       source: ROOM_STATUS_SOURCE_ID,
       paint: {
         'fill-color': ['get', 'fillColor'],
-        'fill-opacity': 0.38,
+        'fill-opacity': 0.55,
       },
     }, beforeId);
 
@@ -630,8 +638,8 @@ const setRoomStatusOverlay = (
       source: ROOM_STATUS_SOURCE_ID,
       paint: {
         'line-color': ['get', 'lineColor'],
-        'line-opacity': 0.92,
-        'line-width': 2,
+        'line-opacity': 1,
+        'line-width': 2.5,
       },
     }, beforeId);
   } catch {
@@ -664,7 +672,9 @@ const setSelectedRoomHighlight = (map: MazeMapInstance, feature: MazeMapFeature 
     return;
   }
 
-  if (!feature || map.isStyleLoaded?.() === false || map.loaded?.() === false) {
+  // Only the style needs to be ready to add layers; map.loaded() also waits for
+  // tiles, which can stay false for a long time while panning.
+  if (!feature || map.isStyleLoaded?.() === false) {
     return;
   }
 
@@ -678,13 +688,28 @@ const setSelectedRoomHighlight = (map: MazeMapInstance, feature: MazeMapFeature 
       data,
     });
 
+    // Hover layers (if any) sit below; the selection is always the top-most
+    // overlay. Dark ink on a white casing reads on both the pale map and any
+    // status colour underneath, which stays visible through the light tint.
+    map.addLayer({
+      id: SELECTED_ROOM_CASING_LAYER_ID,
+      type: 'line',
+      source: SELECTED_ROOM_SOURCE_ID,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': 9,
+        'line-opacity': 0.95,
+      },
+    });
+
     map.addLayer({
       id: SELECTED_ROOM_FILL_LAYER_ID,
       type: 'fill',
       source: SELECTED_ROOM_SOURCE_ID,
       paint: {
-        'fill-color': '#67e8f9',
-        'fill-opacity': 0.28,
+        'fill-color': '#0b0f14',
+        'fill-opacity': 0.12,
       },
     });
 
@@ -692,11 +717,67 @@ const setSelectedRoomHighlight = (map: MazeMapInstance, feature: MazeMapFeature 
       id: SELECTED_ROOM_OUTLINE_LAYER_ID,
       type: 'line',
       source: SELECTED_ROOM_SOURCE_ID,
+      layout: { 'line-join': 'round' },
       paint: {
-        'line-color': '#a5f3fc',
-        'line-width': 3,
+        'line-color': '#0b0f14',
+        'line-width': 4.5,
       },
     });
+  } catch {
+    // MazeMap can still be settling its Mapbox style immediately after initialization.
+  }
+};
+
+// Soft outline under the pointer so rooms read as clickable. Sits below the
+// selection layers, above the status overlay.
+const setHoverRoomHighlight = (map: MazeMapInstance, feature: MazeMapFeature | null) => {
+  const data = feature ? featureCollectionForHighlight(feature) : emptyFeatureCollection;
+  const existingSource = map.getSource?.(HOVER_ROOM_SOURCE_ID);
+
+  if (existingSource?.setData) {
+    existingSource.setData(data);
+    return;
+  }
+
+  // Only the style needs to be ready to add layers; map.loaded() also waits for
+  // tiles, which can stay false for a long time while panning.
+  if (!feature || map.isStyleLoaded?.() === false) {
+    return;
+  }
+
+  if (!map.addSource || !map.addLayer) {
+    return;
+  }
+
+  const beforeId = map.getLayer?.(SELECTED_ROOM_CASING_LAYER_ID) ? SELECTED_ROOM_CASING_LAYER_ID : undefined;
+
+  try {
+    map.addSource(HOVER_ROOM_SOURCE_ID, {
+      type: 'geojson',
+      data,
+    });
+
+    map.addLayer({
+      id: HOVER_ROOM_FILL_LAYER_ID,
+      type: 'fill',
+      source: HOVER_ROOM_SOURCE_ID,
+      paint: {
+        'fill-color': '#0b0f14',
+        'fill-opacity': 0.08,
+      },
+    }, beforeId);
+
+    map.addLayer({
+      id: HOVER_ROOM_OUTLINE_LAYER_ID,
+      type: 'line',
+      source: HOVER_ROOM_SOURCE_ID,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': '#0b0f14',
+        'line-width': 2,
+        'line-opacity': 0.7,
+      },
+    }, beforeId);
   } catch {
     // MazeMap can still be settling its Mapbox style immediately after initialization.
   }
@@ -896,6 +977,56 @@ const MazeMapFloorMap = ({
       mapRef.current = null;
     };
   }, [mapId]);
+
+  // Hover feedback: outline the room under the pointer and show a pointer cursor.
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (status !== 'ready' || !map) {
+      return undefined;
+    }
+
+    const canvas = document.getElementById(mapId)?.querySelector('canvas');
+    let hoveredPoint = '';
+
+    const handleMove = (event: MazeMapMouseEvent) => {
+      const key = `${Math.round(event.point.x)}:${Math.round(event.point.y)}`;
+
+      if (key === hoveredPoint) {
+        return;
+      }
+
+      hoveredPoint = key;
+      const currentZLevel = map.getZLevel?.() ?? floorZLevel;
+      const room = getRoomPolygonFeatures(map.queryRenderedFeatures?.(event.point) ?? [])
+        .filter((feature) => !hasConflictingZLevel(feature, currentZLevel))
+        .sort((first, second) => getPolygonArea(first) - getPolygonArea(second))[0] ?? null;
+
+      setHoverRoomHighlight(map, room);
+
+      if (canvas) {
+        canvas.style.cursor = room ? 'pointer' : '';
+      }
+    };
+
+    const clearHover = () => {
+      hoveredPoint = '';
+      setHoverRoomHighlight(map, null);
+
+      if (canvas) {
+        canvas.style.cursor = '';
+      }
+    };
+
+    map.on?.('mousemove', handleMove);
+    map.on?.('mouseout', clearHover);
+
+    return () => {
+      map.off?.('mousemove', handleMove);
+      map.off?.('mouseout', clearHover);
+      clearHover();
+    };
+  }, [floorZLevel, mapId, status]);
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current) {
@@ -1158,8 +1289,11 @@ const MazeMapFloorMap = ({
       {showGroupRoomColors ? <MapLegend className="absolute bottom-8 right-3 z-10" /> : null}
 
       {status === 'loading' ? (
-        <div className="absolute inset-0 z-20 grid place-items-center bg-surface-950/80 text-sm text-slate-300">
-          Loading MazeMap...
+        <div role="status" className="skeleton absolute inset-0 z-20 grid place-items-center bg-surface-900 text-sm text-slate-300">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-cyan-300" />
+            Loading map…
+          </div>
         </div>
       ) : null}
 
@@ -1167,7 +1301,10 @@ const MazeMapFloorMap = ({
         <div className="absolute inset-0 z-20 grid place-items-center bg-surface-950/90 p-6 text-center">
           <div>
             <p className="text-lg font-semibold text-white">MazeMap could not be loaded</p>
-            <p className="mt-2 text-sm text-slate-400">Use the room list below to choose a room and open the seat overview.</p>
+            <p className="mt-2 text-sm text-slate-400">Check your connection, then reload the page. You can still use the room list below to choose a room and open the seat overview.</p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-4 inline-flex items-center rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-white/20 hover:bg-white/5">
+              Reload page
+            </button>
           </div>
         </div>
       ) : null}

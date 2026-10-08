@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import AvailabilitySummary from '../components/AvailabilitySummary';
 import GroupRoomOverview from '../components/GroupRoomOverview';
+import NotFound from '../components/NotFound';
 import PageHeader from '../components/PageHeader';
 import PopularTimes from '../components/PopularTimes';
 import RoomMap from '../components/RoomMap';
 import SeatDetails from '../components/SeatDetails';
+import { useToast } from '../components/Toast';
 import { cardClass, secondaryButtonClass } from '../components/uiStyles';
 import { DEMO_REFERENCE_NOW_MS, summarizeReadingSeats } from '../demo/createDemoRoomFromMazeMap';
 import { getDemoWeekdayAndHour } from '../demo/popularTimes';
@@ -81,6 +83,7 @@ const Room = () => {
   const [seats, setSeats] = useState<Seat[]>(routeRoom?.type === 'reading-room' ? routeRoom.seats : []);
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(routeRoom?.type === 'reading-room' ? routeRoom.seats[0]?.id ?? null : null);
   const [nowMs, setNowMs] = useState(getRoomStatusNowMs());
+  const { showToast } = useToast();
 
   // Popular times only exist for reading rooms; recomputed per room id only.
   const readingRoomId = room?.type === 'reading-room' ? room.id : null;
@@ -100,7 +103,7 @@ const Room = () => {
   }, [routeRoom]);
 
   if (!room) {
-    return <Navigate to="/" replace />;
+    return <NotFound title="Room not found" message="This room link doesn’t match a room SeatSense knows about." />;
   }
 
   const building = seatService.getBuilding(room.buildingId);
@@ -114,11 +117,27 @@ const Room = () => {
     { label: room.name },
   ];
 
+  const copyRoomLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      showToast('Room link copied', 'success');
+    } catch {
+      showToast('Couldn’t copy the link. Copy it from the address bar instead.');
+    }
+  };
+
   const simulateOccupancy = () => {
     const updatedAt = new Date(nowMs + SIMULATION_STEP_MS);
 
     if (room.type === 'reading-room') {
       const updatedSeats = seats.map((seat, index) => rotateSeatState(seat, index, updatedAt));
+      const changedCount = updatedSeats.filter((seat, index) => seat !== seats[index]).length;
+      showToast(
+        changedCount > 0
+          ? `Simulated update: ${changedCount} seat${changedCount === 1 ? '' : 's'} changed`
+          : 'Simulated update: no seats changed',
+        'info',
+      );
       setSeats(updatedSeats);
       setRoom((currentRoom) =>
         currentRoom?.type === 'reading-room'
@@ -126,6 +145,7 @@ const Room = () => {
           : currentRoom,
       );
     } else {
+      showToast('Simulated update: room state changed', 'info');
       setRoom((currentRoom) =>
         currentRoom?.type === 'group-room'
           ? {
@@ -148,9 +168,14 @@ const Room = () => {
         title={`Room ${room.name}`}
         description={`${room.type === 'reading-room' ? 'Reading room' : 'Group room'} · ${formatDemoSnapshotDateTime(nowMs)}`}
         actions={(
-          <button type="button" onClick={simulateOccupancy} className={secondaryButtonClass}>
-            Simulate occupancy
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={copyRoomLink} className={secondaryButtonClass}>
+              Copy link
+            </button>
+            <button type="button" onClick={simulateOccupancy} className={secondaryButtonClass}>
+              Simulate occupancy
+            </button>
+          </div>
         )}
       />
 

@@ -32,7 +32,7 @@ const OccupancyBar = ({ summary, size = 'md' }: OccupancyBarProps) => {
           return value > 0 ? (
             <div
               key={key}
-              className={`h-full ${className}`}
+              className={`h-full transition-[width] duration-500 ease-out ${className}`}
               style={{ width: `${(value / summary.total) * 100}%` }}
             />
           ) : null;

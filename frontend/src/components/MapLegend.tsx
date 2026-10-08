@@ -42,6 +42,10 @@ const MapLegend = ({ className = '' }: MapLegendProps) => {
             ))}
           </ul>
         </section>
+        <p className="mt-2 flex items-center gap-1.5 whitespace-nowrap">
+          <span aria-hidden="true" className="h-2.5 w-3.5 shrink-0 rounded-sm border-2 border-surface-950 bg-white ring-1 ring-white" />
+          <span>Selected room</span>
+        </p>
         <p className="mt-2 text-[11px] text-slate-500">Reading rooms can be clicked to view seat availability.</p>
       </div>
     </div>

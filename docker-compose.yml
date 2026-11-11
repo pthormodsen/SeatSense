@@ -1,6 +1,11 @@
-# SeatSense frontend (static React build served by nginx).
-# No host ports are published; traffic arrives via the Cloudflare Tunnel
-# on the external "cloudflare" network at http://seatsense:80.
+# SeatSense: static React build served by nginx (seatsense) plus the live
+# sensor API (backend). No host ports are published; traffic arrives via the
+# Cloudflare Tunnel on the external "cloudflare" network at http://seatsense:80.
+# nginx forwards /api/ to the backend over the private "internal" network, so
+# nginx is the only way in.
+#
+# The backend reads DEVICE_TOKENS from a .env file next to this file (see
+# backend/.env.example). Never commit .env.
 services:
   seatsense:
     build:
@@ -8,10 +13,30 @@ services:
     image: seatsense-frontend:latest
     container_name: seatsense
     restart: unless-stopped
+    depends_on:
+      - backend
     networks:
       cloudflare:
         aliases: [seatsense]
+      internal: {}
+
+  backend:
+    build:
+      context: ./backend
+    image: seatsense-backend:latest
+    container_name: seatsense-backend
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 10s
+    environment:
+      DEVICE_TOKENS: ${DEVICE_TOKENS:-}
+      OFFLINE_AFTER_MS: ${OFFLINE_AFTER_MS:-30000}
+      MAX_EVENTS: ${MAX_EVENTS:-500}
+    networks:
+      internal:
+        aliases: [backend]
 
 networks:
   cloudflare:
     external: true
+  internal: {}

@@ -24,6 +24,8 @@ jobs:
         include:
           - name: ""
             context: ./frontend
+          - name: backend
+            context: ./backend
     steps:
       - uses: actions/checkout@v4
 

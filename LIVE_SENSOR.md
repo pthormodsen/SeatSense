@@ -287,5 +287,5 @@ Scenarios to cover:
   direction.
 - **Notes stay in the browser:** they are not stored on the server.
 - **Short release time:** the firmware releases a seat after 5 s without a
-  target (`AVAILABLE_CONFIRM_MS`). This is a prototype value; a real "coffee
+  target (`SEAT_RELEASE_MS`, at the top of `src/main.cpp`). This is a prototype value; a real "coffee
   break" grace period is longer.

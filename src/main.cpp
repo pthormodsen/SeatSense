@@ -2,6 +2,16 @@
 
 #include "network.h"
 
+// ===========================================================================
+// SEAT RELEASE TIME (pilot setting)
+// How long the radar must report no target before an OCCUPIED seat becomes
+// AVAILABLE again. Deliberately SHORT (5 s) for the pilot, so tests such as
+// "person leaves the seat" give a result quickly. A real deployment needs a
+// grace period of a few minutes (coffee break, short absence), e.g.
+// 3 * 60 * 1000UL. The change reaches the backend within ~1 s of this delay.
+// ===========================================================================
+const uint32_t SEAT_RELEASE_MS = 5000;
+
 // Logging verbosity:
 // 0 = silent (no serial output)
 // 1 = boot information and occupancy state changes only (recommended)
@@ -33,10 +43,7 @@ const uint32_t SENSOR_DATA_TIMEOUT_MS = 3000;
 // A target must be reported continuously this long before AVAILABLE -> OCCUPIED
 // (filters single spurious frames / someone briefly passing).
 const uint32_t OCCUPIED_CONFIRM_MS = 1000;
-// TARGET_NONE must be reported continuously this long before OCCUPIED ->
-// AVAILABLE. Short prototype value; the report's "after a few minutes" release
-// delay (coffee break) would be a larger value here.
-const uint32_t AVAILABLE_CONFIRM_MS = 5000;
+// OCCUPIED -> AVAILABLE uses SEAT_RELEASE_MS (top of this file).
 // The (debounced) seat state is uploaded immediately when it changes, and at
 // least this often otherwise so the backend can tell the node is alive.
 const uint32_t HEARTBEAT_INTERVAL_MS = 10000;
@@ -309,9 +316,9 @@ void printRadarDetails(const RadarData &radarData) {
 //   (no debounce). No data is never AVAILABLE.
 // - Otherwise the raw state from the latest frame (target -> OCCUPIED,
 //   TARGET_NONE -> AVAILABLE) must hold continuously for OCCUPIED_CONFIRM_MS /
-//   AVAILABLE_CONFIRM_MS before it becomes the stable state. Leaving UNKNOWN
+//   SEAT_RELEASE_MS before it becomes the stable state. Leaving UNKNOWN
 //   uses the same confirmation windows, so AVAILABLE is only reached after
-//   AVAILABLE_CONFIRM_MS of valid TARGET_NONE frames.
+//   SEAT_RELEASE_MS of valid TARGET_NONE frames.
 // Hands the stable seat state and the latest radar values to the network task
 // (non-blocking, see network.h).
 void reportSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
@@ -350,7 +357,7 @@ void updateSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
       sensor.candidateSinceMs = nowMs;
     } else {
       uint32_t confirmMs =
-          rawState == SeatState::OCCUPIED ? OCCUPIED_CONFIRM_MS : AVAILABLE_CONFIRM_MS;
+          rawState == SeatState::OCCUPIED ? OCCUPIED_CONFIRM_MS : SEAT_RELEASE_MS;
       if ((uint32_t)(nowMs - sensor.candidateSinceMs) >= confirmMs) {
         newState = rawState;
       }

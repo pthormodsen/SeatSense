@@ -29,7 +29,7 @@ const TOP_CHAIR_Y = DESK.y - 14 - CHAIR_H;
 // Drawn radius of the 1 m detection limit, schematic only.
 const RADAR_R = 76;
 // Half the opening angle of the drawn field. Smaller = narrower, more straight ahead.
-const RADAR_HALF_ANGLE_DEG = 25;
+const RADAR_HALF_ANGLE_DEG = 60;
 const RADAR_HALF_ANGLE = (RADAR_HALF_ANGLE_DEG * Math.PI) / 180;
 
 interface ChairProps {

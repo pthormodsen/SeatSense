@@ -277,7 +277,7 @@ const LiveSensorView = ({ sensorId, sensorPicker }: LiveSensorViewProps) => {
             <Stat label="Sensor time" value={state.sentAt ? timeFormat.format(Date.parse(state.sentAt)) : '–'} />
           </div>
           <p className="mt-3 text-xs text-slate-500">
-            Energy is the LD2410C signal strength (0–100). Occupied means the radar reports any target type other than none.
+            Raw values as the LD2410C reports them; energy is signal strength (0–100). The sensor decides the seat status itself: only targets within 1.5 m count, and a free seat needs a strong target for 3 s before it becomes occupied.
           </p>
         </section>
       </div>

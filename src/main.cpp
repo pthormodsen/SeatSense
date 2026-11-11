@@ -1,16 +1,46 @@
 #include <Arduino.h>
 
 #include "network.h"
+#include "seat_filter.h"
 
 // ===========================================================================
-// SEAT RELEASE TIME (pilot setting)
-// How long the radar must report no target before an OCCUPIED seat becomes
-// AVAILABLE again. Deliberately SHORT (5 s) for the pilot, so tests such as
-// "person leaves the seat" give a result quickly. A real deployment needs a
-// grace period of a few minutes (coffee break, short absence), e.g.
-// 3 * 60 * 1000UL. The change reaches the backend within ~1 s of this delay.
+// SEAT DETECTION (pilot settings) - the decision logic is in seat_filter.cpp
+// and is tested on a computer with test/host/run.sh.
+//
+// SEAT RELEASE TIME: how long no person may be detected before an OCCUPIED
+// seat becomes AVAILABLE again. Deliberately SHORT (5 s) for the pilot, so
+// tests such as "person leaves the seat" give a result quickly. A real
+// deployment needs a grace period of a few minutes (coffee break, short
+// absence), e.g. 3 * 60 * 1000UL. The change reaches the backend within ~1 s
+// of this delay.
 // ===========================================================================
 const uint32_t SEAT_RELEASE_MS = 5000;
+
+// Only targets this close count; everything farther away (other people, the
+// walkway, neighbouring seats) is ignored. The radar itself still sees ~6 m;
+// its raw values are uploaded unchanged so /live shows what it reports.
+const uint16_t SEAT_MAX_DISTANCE_CM = 150;
+
+// AVAILABLE -> OCCUPIED (strict): a target within range with at least this
+// energy (0-100), sustained for OCCUPIED_CONFIRM_MS (gaps up to
+// OCCUPIED_GAP_TOLERANCE_MS allowed). A person walking past is gone sooner.
+const uint8_t ENTER_STATIONARY_MIN_ENERGY = 40;
+const uint8_t ENTER_MOVING_MIN_ENERGY = 50;
+const uint32_t OCCUPIED_CONFIRM_MS = 3000;
+const uint32_t OCCUPIED_GAP_TOLERANCE_MS = 1000;
+
+// OCCUPIED stays while a target within range has at least this (lower)
+// energy; weaker reflections are background (chair, desk). The empty seat in
+// the first test read ~22, a seated person 40-100: tune after an empty-seat
+// test by setting these just above the empty-seat energy.
+const uint8_t STAY_STATIONARY_MIN_ENERGY = 25;
+const uint8_t STAY_MOVING_MIN_ENERGY = 30;
+
+const SeatFilterConfig SEAT_FILTER_CONFIG = {
+    SEAT_MAX_DISTANCE_CM,        ENTER_STATIONARY_MIN_ENERGY, ENTER_MOVING_MIN_ENERGY,
+    OCCUPIED_CONFIRM_MS,         OCCUPIED_GAP_TOLERANCE_MS,   STAY_STATIONARY_MIN_ENERGY,
+    STAY_MOVING_MIN_ENERGY,      SEAT_RELEASE_MS,
+};
 
 // Logging verbosity:
 // 0 = silent (no serial output)
@@ -37,13 +67,9 @@ const uint32_t SERIAL_HOST_WAIT_MS = 2000;
 // UART fault). The real sensor reports several times per second, so a few
 // seconds is well above the normal frame gap.
 const uint32_t SENSOR_DATA_TIMEOUT_MS = 3000;
-// Debounce of the seat state (firmware-side, independent of the LD2410C's own
-// "unmanned duration", which is not configured by this firmware). Every frame
-// is still read and parsed; only the reported seat state is debounced.
-// A target must be reported continuously this long before AVAILABLE -> OCCUPIED
-// (filters single spurious frames / someone briefly passing).
-const uint32_t OCCUPIED_CONFIRM_MS = 1000;
-// OCCUPIED -> AVAILABLE uses SEAT_RELEASE_MS (top of this file).
+// Seat state filtering: see SEAT DETECTION at the top of this file. It is
+// firmware-side and independent of the LD2410C's own settings ("unmanned
+// duration", gate thresholds), which this firmware does not change.
 // The (debounced) seat state is uploaded immediately when it changes, and at
 // least this often otherwise so the backend can tell the node is alive.
 const uint32_t HEARTBEAT_INTERVAL_MS = 10000;
@@ -135,18 +161,7 @@ const uint8_t CMD_READ_DISTANCE_RESOLUTION = 0xAB;
 //        00 00 <gate u32, FFFF = all gates> 01 00 <moving 0..100 u32> 02 00 <stationary 0..100 u32>
 //   0xAA distance resolution (takes effect after a sensor restart).
 // 0x63 disables engineering mode (volatile).
-const uint8_t TARGET_NONE = 0;
-const uint8_t TARGET_MOVING = 1;
-const uint8_t TARGET_STATIONARY = 2;
-const uint8_t TARGET_MOVING_AND_STATIONARY = 3;
-struct RadarData {
-  uint8_t targetType = 0;
-  uint16_t movingDistanceCm = 0;
-  uint8_t movingEnergy = 0;
-  uint16_t stationaryDistanceCm = 0;
-  uint8_t stationaryEnergy = 0;
-  uint16_t detectionDistanceCm = 0;
-};
+// TARGET_* constants and RadarData are in seat_filter.h.
 // Extra fields of an engineering report.
 struct EngineeringData {
   uint8_t maxMovingGate = 0;
@@ -157,7 +172,6 @@ struct EngineeringData {
   uint8_t lightValue = 0;
   uint8_t outPin = 0;
 };
-enum class SeatState { UNKNOWN, AVAILABLE, OCCUPIED };
 enum class FrameResult { BASIC, ENGINEERING, BAD_FOOTER, BAD_MARKERS, UNKNOWN_TYPE };
 // All per-sensor state lives here so more sensors per node can be added later.
 struct Ld2410cSensor {
@@ -169,9 +183,8 @@ struct Ld2410cSensor {
   RadarData latest;
   bool hasValidFrame = false;
   uint32_t lastValidFrameMs = 0;
-  SeatState state = SeatState::UNKNOWN;       // stable (debounced) seat state
-  SeatState candidateState = SeatState::UNKNOWN;  // raw state waiting to be confirmed
-  uint32_t candidateSinceMs = 0;               // when candidateState was first seen
+  SeatState state = SeatState::UNKNOWN;       // stable (filtered) seat state
+  SeatFilter seatFilter;                       // detection history for the state
   uint32_t lastReportMs = 0;                   // last reading handed to the network task
 #if LD2410C_ENGINEERING_DIAGNOSTICS
   // Command/ACK handshake: only an ACK for pendingCommand is accepted.
@@ -311,14 +324,6 @@ void printRadarDetails(const RadarData &radarData) {
     Serial.println(radarData.stationaryEnergy);
   }
 }
-// Derives the debounced seat state from the latest valid frame and its age.
-// - No valid frame yet, or none for SENSOR_DATA_TIMEOUT_MS -> UNKNOWN at once
-//   (no debounce). No data is never AVAILABLE.
-// - Otherwise the raw state from the latest frame (target -> OCCUPIED,
-//   TARGET_NONE -> AVAILABLE) must hold continuously for OCCUPIED_CONFIRM_MS /
-//   SEAT_RELEASE_MS before it becomes the stable state. Leaving UNKNOWN
-//   uses the same confirmation windows, so AVAILABLE is only reached after
-//   SEAT_RELEASE_MS of valid TARGET_NONE frames.
 // Hands the stable seat state and the latest radar values to the network task
 // (non-blocking, see network.h).
 void reportSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
@@ -337,32 +342,15 @@ void reportSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
   sensor.lastReportMs = nowMs;
 }
 
+// Derives the stable seat state from the latest valid frame and its age.
+// No valid frame yet, or none for SENSOR_DATA_TIMEOUT_MS -> UNKNOWN at once;
+// no data is never AVAILABLE. Otherwise seat_filter.cpp decides (range limit,
+// enter/stay energy thresholds, confirmation and release times).
 void updateSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
-  SeatState newState = sensor.state;
-  bool timedOut = false;
-  if (!sensor.hasValidFrame) {
-    newState = SeatState::UNKNOWN;
-    sensor.candidateState = SeatState::UNKNOWN;
-  } else if ((uint32_t)(nowMs - sensor.lastValidFrameMs) >= SENSOR_DATA_TIMEOUT_MS) {
-    newState = SeatState::UNKNOWN;
-    sensor.candidateState = SeatState::UNKNOWN;  // restart confirmation after recovery
-    timedOut = true;
-  } else {
-    SeatState rawState =
-        sensor.latest.targetType != TARGET_NONE ? SeatState::OCCUPIED : SeatState::AVAILABLE;
-    if (rawState == sensor.state) {
-      sensor.candidateState = sensor.state;  // nothing pending
-    } else if (rawState != sensor.candidateState) {
-      sensor.candidateState = rawState;  // start the confirmation window
-      sensor.candidateSinceMs = nowMs;
-    } else {
-      uint32_t confirmMs =
-          rawState == SeatState::OCCUPIED ? OCCUPIED_CONFIRM_MS : SEAT_RELEASE_MS;
-      if ((uint32_t)(nowMs - sensor.candidateSinceMs) >= confirmMs) {
-        newState = rawState;
-      }
-    }
-  }
+  bool hasData = sensor.hasValidFrame;
+  bool timedOut = hasData && (uint32_t)(nowMs - sensor.lastValidFrameMs) >= SENSOR_DATA_TIMEOUT_MS;
+  SeatState newState = updateSeatFilter(sensor.seatFilter, SEAT_FILTER_CONFIG, sensor.state,
+                                        hasData && !timedOut, sensor.latest, nowMs);
   if (newState == sensor.state) {
     return;
   }

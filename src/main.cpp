@@ -19,13 +19,15 @@ const uint32_t SEAT_RELEASE_MS = 5000;
 // Only targets this close count; everything farther away (other people, the
 // walkway, neighbouring seats) is ignored. The radar itself still sees ~6 m;
 // its raw values are uploaded unchanged so /live shows what it reports.
-const uint16_t SEAT_MAX_DISTANCE_CM = 150;
+const uint16_t SEAT_MAX_DISTANCE_CM = 100;
 
 // AVAILABLE -> OCCUPIED (strict): a target within range with at least this
 // energy (0-100), sustained for OCCUPIED_CONFIRM_MS (gaps up to
 // OCCUPIED_GAP_TOLERANCE_MS allowed). A person walking past is gone sooner.
-const uint8_t ENTER_STATIONARY_MIN_ENERGY = 40;
-const uint8_t ENTER_MOVING_MIN_ENERGY = 50;
+// Raised from 40/50 and 25/30 (and range from 150 cm): people on the
+// neighbouring seats made this seat occupied.
+const uint8_t ENTER_STATIONARY_MIN_ENERGY = 60;
+const uint8_t ENTER_MOVING_MIN_ENERGY = 65;
 const uint32_t OCCUPIED_CONFIRM_MS = 3000;
 const uint32_t OCCUPIED_GAP_TOLERANCE_MS = 1000;
 
@@ -33,8 +35,8 @@ const uint32_t OCCUPIED_GAP_TOLERANCE_MS = 1000;
 // energy; weaker reflections are background (chair, desk). The empty seat in
 // the first test read ~22, a seated person 40-100: tune after an empty-seat
 // test by setting these just above the empty-seat energy.
-const uint8_t STAY_STATIONARY_MIN_ENERGY = 25;
-const uint8_t STAY_MOVING_MIN_ENERGY = 30;
+const uint8_t STAY_STATIONARY_MIN_ENERGY = 35;
+const uint8_t STAY_MOVING_MIN_ENERGY = 40;
 
 const SeatFilterConfig SEAT_FILTER_CONFIG = {
     SEAT_MAX_DISTANCE_CM,        ENTER_STATIONARY_MIN_ENERGY, ENTER_MOVING_MIN_ENERGY,

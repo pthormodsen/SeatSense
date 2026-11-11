@@ -170,10 +170,10 @@ seat state itself (`src/seat_filter.cpp`). The settings are at the top of
 
 | Setting | Value | Meaning |
 | --- | --- | --- |
-| `SEAT_MAX_DISTANCE_CM` | 150 | Targets farther away are ignored. |
-| `ENTER_STATIONARY_MIN_ENERGY` / `ENTER_MOVING_MIN_ENERGY` | 40 / 50 | Energy needed to make a free seat occupied. |
+| `SEAT_MAX_DISTANCE_CM` | 100 | Targets farther away are ignored. |
+| `ENTER_STATIONARY_MIN_ENERGY` / `ENTER_MOVING_MIN_ENERGY` | 60 / 65 | Energy needed to make a free seat occupied. |
 | `OCCUPIED_CONFIRM_MS` | 3000 | ...sustained this long (gaps ≤ 1 s allowed). A passer-by does not qualify. |
-| `STAY_STATIONARY_MIN_ENERGY` / `STAY_MOVING_MIN_ENERGY` | 25 / 30 | Lower energy that keeps an occupied seat. Weaker reflections are background. |
+| `STAY_STATIONARY_MIN_ENERGY` / `STAY_MOVING_MIN_ENERGY` | 35 / 40 | Lower energy that keeps an occupied seat. Weaker reflections are background. |
 | `SEAT_RELEASE_MS` | 5000 | Released after this long below the stay level. |
 
 These are hysteresis thresholds. Entering is strict and staying is lenient, so
@@ -187,13 +187,13 @@ what the radar reports with what the seat filter decided.
 1. Leave the seat empty, with nobody within ~2 m, for 2 minutes.
 2. Read *Stationary energy* and *distance* on `/live`, or in the CSV export.
 3. Set `STAY_STATIONARY_MIN_ENERGY` a little above the highest empty-seat
-   energy within 1.5 m, and `ENTER_*` clearly above that.
+   energy within 1 m, and `ENTER_*` clearly above that.
 4. Check with a person seated that the energy stays above the stay level.
 
 `test/host/run.sh` checks the filter on a computer. It simulates a passer-by,
-movement beyond 1.5 m, background reflections, a person sitting very still,
+movement beyond the distance limit, background reflections, a person sitting very still,
 short dropouts and leaving. Note that the Wokwi chip sends energy 0 by default;
-set its energy above 40 to get OCCUPIED in the simulator.
+set its energy above 60 to get OCCUPIED in the simulator.
 
 ## Running locally
 

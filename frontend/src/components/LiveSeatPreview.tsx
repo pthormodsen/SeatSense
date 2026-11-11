@@ -26,8 +26,11 @@ const CHAIR_W = 50;
 const CHAIR_H = 40;
 const BOTTOM_CHAIR_Y = DESK.y + DESK.height + 14;
 const TOP_CHAIR_Y = DESK.y - 14 - CHAIR_H;
-// Drawn radius of the 1.5 m detection limit, schematic only.
+// Drawn radius of the 1 m detection limit, schematic only.
 const RADAR_R = 76;
+// Half the opening angle of the drawn field. Smaller = narrower, more straight ahead.
+const RADAR_HALF_ANGLE_DEG = 25;
+const RADAR_HALF_ANGLE = (RADAR_HALF_ANGLE_DEG * Math.PI) / 180;
 
 interface ChairProps {
   x: number;
@@ -78,7 +81,7 @@ const LiveSeatPreview = ({ status, sensorId }: LiveSeatPreviewProps) => {
 
           {/* Radar field under the desk, pointing at the live chair */}
           <path
-            d={`M ${sensorX} ${sensorY} L ${sensorX - RADAR_R * Math.sin(Math.PI / 3)} ${sensorY + RADAR_R * Math.cos(Math.PI / 3)} A ${RADAR_R} ${RADAR_R} 0 0 0 ${sensorX + RADAR_R * Math.sin(Math.PI / 3)} ${sensorY + RADAR_R * Math.cos(Math.PI / 3)} Z`}
+            d={`M ${sensorX} ${sensorY} L ${sensorX - RADAR_R * Math.sin(RADAR_HALF_ANGLE)} ${sensorY + RADAR_R * Math.cos(RADAR_HALF_ANGLE)} A ${RADAR_R} ${RADAR_R} 0 0 0 ${sensorX + RADAR_R * Math.sin(RADAR_HALF_ANGLE)} ${sensorY + RADAR_R * Math.cos(RADAR_HALF_ANGLE)} Z`}
             className={`${radarFill[status]} transition-colors duration-500`}
             strokeWidth="1.5"
             strokeDasharray="4 4"
@@ -133,7 +136,7 @@ const LiveSeatPreview = ({ status, sensorId }: LiveSeatPreviewProps) => {
         </span>
       </figcaption>
       <p className="mt-2 text-xs text-slate-500">
-        Schematic, not to scale. Only the highlighted seat is live; the grey seats are decoration. The dashed area marks the 1.5 m detection limit.
+        Schematic, not to scale. Only the highlighted seat is live; the grey seats are decoration. The dashed area marks the 1 m detection limit.
       </p>
     </figure>
   );

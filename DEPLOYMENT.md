@@ -17,6 +17,7 @@ Only `/live` shows real sensor data (see `LIVE_SENSOR.md`).
 | Cloudflare Tunnel service URL | `http://seatsense:80` |
 | Backend container | `seatsense-backend`, port 3001, only on the private `internal` network |
 | Backend config | `DEVICE_TOKENS` in `.env` next to `docker-compose.yml` (see `.env.example`) |
+| Backend data | Event log `/data/events.jsonl` on the named volume `backend-data` |
 
 Files: `docker-compose.yml` (repo root), `frontend/Dockerfile`,
 `frontend/nginx.conf`, `frontend/.dockerignore`.
@@ -72,6 +73,14 @@ docker compose logs -f backend        # readings, rejected uploads, online/offli
 ```
 
 If the backend is down, the site still loads and `/api` returns 502.
+
+The event log survives `docker compose down` and `up --build`. Only
+`docker compose down -v` deletes the volume, and with it the pilot history.
+Back it up with:
+
+```bash
+docker cp seatsense-backend:/data/events.jsonl ./events-$(date +%F).jsonl
+```
 
 Or from inside the container itself:
 

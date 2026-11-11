@@ -12,6 +12,8 @@ export interface Config {
   keepaliveMs: number;
   offlineCheckMs: number;
   maxBodyBytes: number;
+  // JSON Lines file for persisted events; null disables persistence.
+  eventsFile: string | null;
 }
 
 // "seat-001:token-a,seat-002:token-b" -> Map. Throws on malformed entries so a
@@ -60,4 +62,5 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => ({
   keepaliveMs: readInt(env, 'SSE_KEEPALIVE_MS', 15_000, 1_000),
   offlineCheckMs: 1_000,
   maxBodyBytes: 4_096,
+  eventsFile: env.EVENTS_FILE?.trim() || null,
 });

@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Config } from './config.js';
+import { openEventWriter } from './eventLog.js';
 import { SensorStore } from './store.js';
 import type { SensorEvent, SensorEventsResponse, SensorState, StreamMessage } from './types.js';
 import { parseReading } from './validate.js';
@@ -10,6 +11,8 @@ export interface AppOptions {
   now?: () => number;
   // Tests drive offline checks and keepalives by hand.
   timers?: boolean;
+  // Persisted events to restore (see eventLog.loadEvents), oldest first.
+  initialEvents?: SensorEvent[];
 }
 
 export interface App {
@@ -89,6 +92,11 @@ export const createApp = (config: Config, options: AppOptions = {}): App => {
     maxEvents: config.maxEvents,
     now,
   });
+  store.restore(options.initialEvents ?? []);
+
+  const writer = config.eventsFile ? openEventWriter(config.eventsFile) : null;
+  const unsubscribeWriter = writer ? store.subscribe((_state, event) => writer.append(event)) : () => {};
+
   const streamClients = new Set<StreamClient>();
   const timers: NodeJS.Timeout[] = [];
 
@@ -281,7 +289,9 @@ export const createApp = (config: Config, options: AppOptions = {}): App => {
         const force = setTimeout(() => server.closeAllConnections(), 1_000);
         server.close(() => {
           clearTimeout(force);
-          resolve();
+          unsubscribeWriter();
+          // Flush events still buffered for the file.
+          void (writer?.close() ?? Promise.resolve()).then(() => resolve());
         });
         server.closeIdleConnections();
       }),

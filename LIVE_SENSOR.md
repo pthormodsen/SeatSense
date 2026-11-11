@@ -10,8 +10,9 @@ ESP32-S3 + LD2410C ──HTTPS POST──▶ Cloudflare Tunnel ──▶ nginx (
 Browser /live ◀──────────── Server-Sent Events (SSE) ─────────────────────────┘
 ```
 
-- **Prototype choices:** HTTPS POST rather than MQTT, no database, and the last
-  500 events per sensor are kept in memory (lost on restart).
+- **Prototype choices:** HTTPS POST rather than MQTT, and no database. Every
+  event is appended to a JSON Lines file. The last 500 events per sensor are
+  kept in memory and loaded back from the file at startup.
 - **Production direction (not built):** MQTT over TLS with a broker and
   persistent, aggregated history.
 
@@ -99,6 +100,31 @@ streams can be open at once; beyond that the server returns `503`.
 | `MAX_STREAM_CLIENTS` | 100 | |
 | `SSE_KEEPALIVE_MS` | 15000 | |
 | `PORT` | 3001 | |
+| `EVENTS_FILE` | – (Docker: `/data/events.jsonl`) | Append-only event log. Empty = memory only. |
+
+### Event log file
+
+- **Format:** every event (`online`, `occupancy-change`, `heartbeat`,
+  `offline`) is appended to `EVENTS_FILE` as one JSON line. Each line has the
+  same fields as `GET /events`.
+- **Never shortened:** the file is the complete pilot history. Expect roughly
+  2–3 MB per sensor per day with a 10 s heartbeat.
+- **At startup** the file is read line by line:
+  - the newest `MAX_EVENTS` per sensor are loaded into memory
+  - the latest state is rebuilt, and event ids continue after the highest one
+  - invalid lines and sensors no longer in `DEVICE_TOKENS` are skipped and
+    counted in the log
+- **After a restart:** a sensor whose last event was a reading counts as online
+  from that reading's time. If it does not report again within
+  `OFFLINE_AFTER_MS`, an `offline` event is logged.
+- **Write errors** are logged (`[events] … NOT being persisted`), but the API
+  keeps running.
+- **In Docker** the file lives on the `backend-data` volume and survives
+  restarts and image rebuilds. To copy it out for analysis:
+
+  ```sh
+  docker cp seatsense-backend:/data/events.jsonl ./events.jsonl
+  ```
 
 ## Firmware configuration: `include/secrets.h`
 
@@ -169,7 +195,7 @@ Stop sending and `/live` shows **Offline** after 30 s.
 ## Tests
 
 ```sh
-cd backend && npm test                     # 14 API tests
+cd backend && npm test                     # 19 tests (API + event log)
 cd backend && ./scripts/check-firmware-json.sh  # firmware JSON vs backend validator
 cd frontend && npm run build               # type check
 pio run                                    # firmware, with and without secrets.h
@@ -184,6 +210,9 @@ The backend tests cover:
 - offline detection and reconnection
 - shutdown closing open streams
 - config validation
+- the event log: appending every event, restoring the last `MAX_EVENTS` per
+  sensor with state and ids after a restart, offline after restart, skipping
+  invalid lines and removed sensors
 
 The backend Docker image runs the tests during the build.
 
@@ -230,7 +259,8 @@ During the pilot:
 - Add ground-truth notes ("Person sat down", "bag on chair, no person") with
   the buttons on `/live`.
 - Use **Export CSV** before closing the tab. The CSV holds every event
-  (including heartbeats with raw radar values) and every note.
+  (including heartbeats with raw radar values) and every note. The notes exist
+  only in the tab, but the events are also in the server's event log file.
 - Compare `occupancy` against your notes to count false positives and false
   negatives.
 
@@ -246,8 +276,9 @@ Scenarios to cover:
 - **Not tested on real hardware yet:** Wi-Fi, TLS and NTP in the firmware have
   only been checked by compiling. The JSON format and every backend and
   frontend path are tested.
-- **Memory only:** state and the log are lost when the backend restarts. The
-  browser tab keeps up to 5,000 events while it is open.
+- **The event file is never rotated:** it grows by roughly 2–3 MB per sensor
+  per day. The API returns only the last 500 events; the full history is in
+  the file. The browser tab keeps up to 5,000 events while it is open.
 - **Clock comparisons:** the latency figures compare clocks on different
   machines (NTP), so expect tens of ms of error. Server → browser assumes the
   viewer's clock is synced.

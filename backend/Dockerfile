@@ -16,11 +16,16 @@ RUN npm test
 # ---- Runtime stage: compiled JS only, no runtime dependencies ----
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production \
-    PORT=3001
+    PORT=3001 \
+    EVENTS_FILE=/data/events.jsonl
 WORKDIR /app
 
 COPY package.json ./
 COPY --from=build /app/dist/src ./dist/src
+
+# Event log volume. Created here so a new named volume is owned by `node`.
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
 
 USER node
 EXPOSE 3001

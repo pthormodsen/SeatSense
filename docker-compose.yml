@@ -4,6 +4,7 @@
 # nginx forwards /api/ to the backend over the private "internal" network, so
 # nginx is the only way in.
 #
+# Events are appended to /data/events.jsonl on the backend-data volume.
 # The backend reads DEVICE_TOKENS from a .env file next to this file (see
 # backend/.env.example). Never commit .env.
 services:
@@ -32,6 +33,10 @@ services:
       DEVICE_TOKENS: ${DEVICE_TOKENS:-}
       OFFLINE_AFTER_MS: ${OFFLINE_AFTER_MS:-30000}
       MAX_EVENTS: ${MAX_EVENTS:-500}
+      EVENTS_FILE: /data/events.jsonl
+    volumes:
+      # Append-only event log (JSON Lines); survives restarts and rebuilds.
+      - backend-data:/data
     networks:
       internal:
         aliases: [backend]
@@ -40,3 +45,6 @@ networks:
   cloudflare:
     external: true
   internal: {}
+
+volumes:
+  backend-data: {}

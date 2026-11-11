@@ -40,8 +40,9 @@ const pickReading = (source: ReadingValues): ReadingValues => ({
   uptimeMs: source.uptimeMs,
 });
 
-// In-memory latest state and event log per configured sensor. No persistence:
-// a restart starts with every sensor offline and an empty log.
+// Latest state and the newest events per configured sensor, in memory.
+// Persistence (the event log file) is handled by eventLog.ts via restore()
+// and a store listener.
 export class SensorStore {
   private readonly sensors = new Map<string, SensorRecord>();
   private readonly listeners = new Set<StoreListener>();
@@ -72,6 +73,35 @@ export class SensorStore {
 
   getEvents(sensorId: string): SensorEvent[] | undefined {
     return this.sensors.get(sensorId)?.events.slice();
+  }
+
+  // Loads persisted events (oldest first) at startup, without notifying
+  // listeners. The latest state is rebuilt from them and new event ids continue
+  // after the highest restored id. A sensor whose last event was a reading is
+  // restored as online with that reading's time, so checkOffline() reports it
+  // offline if it does not send again in time.
+  restore(events: SensorEvent[]): void {
+    for (const event of events) {
+      const record = this.sensors.get(event.sensorId);
+      if (!record) continue;
+
+      record.events.push(event);
+      if (record.events.length > this.options.maxEvents) record.events.shift();
+      this.nextEventId = Math.max(this.nextEventId, event.id + 1);
+
+      if (event.type === 'offline') {
+        record.state = { ...record.state, online: false };
+      } else {
+        record.state = {
+          sensorId: event.sensorId,
+          online: true,
+          lastReceivedAt: event.at,
+          latencyMs: event.latencyMs,
+          ...pickReading(event),
+        };
+        record.lastReceivedMs = Date.parse(event.at);
+      }
+    }
   }
 
   subscribe(listener: StoreListener): () => void {

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 SeatSense is a study-seat occupancy system with three parts:
 
 1. **Firmware** (repo root, PlatformIO): an ESP32-S3 reads an HLK-LD2410C 24 GHz mmWave presence sensor over UART, prints the seat state to serial and (if `include/secrets.h` exists) uploads readings over HTTPS.
-2. **Backend** (`backend/`): a small Node/TypeScript live-sensor API with no dependencies. It keeps the latest state and the last 500 events per sensor in memory (no database) and pushes them to browsers over SSE.
+2. **Backend** (`backend/`): a small Node/TypeScript live-sensor API with no dependencies. It appends every event to a JSON Lines file (`EVENTS_FILE`, a Docker volume; no database), keeps the latest state and the last 500 events per sensor in memory (restored from the file at startup) and pushes them to browsers over SSE.
 3. **Frontend** (`frontend/`): a React + Vite + Tailwind dashboard for Campus Kronstad (building → floor → room → seat). Everything except `/live` is **mock/demo data** via `seatService`; `/live` shows one real sensor via `liveSensorService`.
 
 The live sensor contract is documented in `LIVE_SENSOR.md`. It is defined in `backend/src/types.ts`, copied to `frontend/src/types/liveSensor.ts` and produced by `src/reading_json.cpp`; change all three together. Do not add MQTT, a database or other infrastructure unless asked.

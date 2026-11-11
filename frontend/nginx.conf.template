@@ -1,3 +1,10 @@
+# Template: the nginx entrypoint fills in ${...} from the environment at
+# container start (see the Dockerfile). Only those two variables are replaced;
+# nginx's own $variables are left alone.
+#   NGINX_LOCAL_RESOLVERS  DNS servers from /etc/resolv.conf (Docker: 127.0.0.11,
+#                          k3s: the cluster DNS)
+#   SEATSENSE_BACKEND_URL  where /api goes (Compose: http://backend:3001,
+#                          k3s: http://seatsense-backend.apps.svc.cluster.local:3001)
 server {
     listen 80;
     listen [::]:80;
@@ -23,14 +30,15 @@ server {
         add_header Cache-Control "no-cache";
     }
 
-    # Docker's embedded DNS. Resolving the backend per request (via the
-    # variable below) lets nginx start, and serve the site, even when the
-    # backend container is down; /api then returns 502.
-    resolver 127.0.0.11 valid=10s ipv6=off;
+    # The backend is resolved per request (via the variable below), so nginx
+    # starts and serves the site even when the backend is down; /api then
+    # returns 502. nginx's resolver ignores DNS search domains, so in k3s the
+    # backend URL must be the full service name.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
     # Live sensor stream (Server-Sent Events): no buffering, long-lived.
     location ~ ^/api/sensors/[^/]+/stream$ {
-        set $backend http://backend:3001;
+        set $backend ${SEATSENSE_BACKEND_URL};
         proxy_pass $backend;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
@@ -44,7 +52,7 @@ server {
 
     # Sensor uploads and read-only API. Request bodies are tiny.
     location /api/ {
-        set $backend http://backend:3001;
+        set $backend ${SEATSENSE_BACKEND_URL};
         proxy_pass $backend;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

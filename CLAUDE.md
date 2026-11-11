@@ -68,9 +68,11 @@ npm test          # tsc + node:test API tests
 DEVICE_TOKEN=... ./scripts/send-reading.sh loop   # simulated sensor
 ```
 
-### Deployment (run from repo root)
+### Deployment
 
-`docker compose up -d --build` builds `frontend/Dockerfile` (nginx, no published ports, joins external network `cloudflare` as `seatsense`) and `backend/Dockerfile` (private `internal` network only; nginx proxies `/api/`). `DEVICE_TOKENS` comes from `.env`. See `DEPLOYMENT.md`.
+Production is k3s (namespace `apps`). GitHub Actions builds `ghcr.io/pthormodsen/seatsense` and `-backend` on push to `main`. The backend manifest is in `k8s/seatsense-backend.yaml`; the frontend Deployment lives outside this repo and needs `SEATSENSE_BACKEND_URL`. `frontend/nginx.conf.template` takes its resolver and backend URL from the environment, so the same image works in k3s and Compose. See `DEPLOYMENT.md`.
+
+For local or single-host testing (run from repo root), `docker compose up -d --build` builds `frontend/Dockerfile` (nginx, no published ports, joins external network `cloudflare` as `seatsense`) and `backend/Dockerfile` (private `internal` network only; nginx proxies `/api/`). `DEVICE_TOKENS` comes from `.env`. See `DEPLOYMENT.md`.
 
 Only the backend has tests; there are no linters (`test/` is the PlatformIO placeholder).
 

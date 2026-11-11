@@ -1,4 +1,7 @@
 #include <Arduino.h>
+
+#include "network.h"
+
 // Logging verbosity:
 // 0 = silent (no serial output)
 // 1 = boot information and occupancy state changes only (recommended)
@@ -34,6 +37,13 @@ const uint32_t OCCUPIED_CONFIRM_MS = 1000;
 // AVAILABLE. Short prototype value; the report's "after a few minutes" release
 // delay (coffee break) would be a larger value here.
 const uint32_t AVAILABLE_CONFIRM_MS = 5000;
+// The (debounced) seat state is uploaded immediately when it changes, and at
+// least this often otherwise so the backend can tell the node is alive.
+const uint32_t HEARTBEAT_INTERVAL_MS = 10000;
+// Default is 256 bytes (~11 basic frames). Larger so a slow loop() iteration,
+// e.g. while serial output is blocked, cannot overflow it. Networking runs in
+// its own task and never blocks the radar loop.
+const size_t LD2410C_RX_BUFFER_SIZE = 1024;
 #if LD2410C_DIAGNOSTICS
 const uint32_t LD2410C_DIAG_INTERVAL_MS = 2000;
 const size_t LD2410C_DIAG_HEX_DUMP_BYTES = 48;
@@ -155,6 +165,7 @@ struct Ld2410cSensor {
   SeatState state = SeatState::UNKNOWN;       // stable (debounced) seat state
   SeatState candidateState = SeatState::UNKNOWN;  // raw state waiting to be confirmed
   uint32_t candidateSinceMs = 0;               // when candidateState was first seen
+  uint32_t lastReportMs = 0;                   // last reading handed to the network task
 #if LD2410C_ENGINEERING_DIAGNOSTICS
   // Command/ACK handshake: only an ACK for pendingCommand is accepted.
   uint8_t pendingCommand = 0;
@@ -301,6 +312,24 @@ void printRadarDetails(const RadarData &radarData) {
 //   AVAILABLE_CONFIRM_MS before it becomes the stable state. Leaving UNKNOWN
 //   uses the same confirmation windows, so AVAILABLE is only reached after
 //   AVAILABLE_CONFIRM_MS of valid TARGET_NONE frames.
+// Hands the stable seat state and the latest radar values to the network task
+// (non-blocking, see network.h).
+void reportSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
+  SensorReading reading;
+  reading.occupied = sensor.state == SeatState::OCCUPIED    ? 1
+                     : sensor.state == SeatState::AVAILABLE ? 0
+                                                            : -1;
+  // UNKNOWN can mean no recent valid frame, so the last values may be stale.
+  reading.radarValid = sensor.state != SeatState::UNKNOWN;
+  reading.targetType = sensor.latest.targetType;
+  reading.movingCm = sensor.latest.movingDistanceCm;
+  reading.stationaryCm = sensor.latest.stationaryDistanceCm;
+  reading.movingEnergy = sensor.latest.movingEnergy;
+  reading.stationaryEnergy = sensor.latest.stationaryEnergy;
+  networkSubmit(reading);
+  sensor.lastReportMs = nowMs;
+}
+
 void updateSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
   SeatState newState = sensor.state;
   bool timedOut = false;
@@ -331,6 +360,7 @@ void updateSeatState(Ld2410cSensor &sensor, uint32_t nowMs) {
     return;
   }
   sensor.state = newState;
+  reportSeatState(sensor, nowMs);
 #if LOG_LEVEL >= 1
   Serial.print("[SeatSense] ");
   Serial.print(seatStateName(newState));
@@ -838,6 +868,7 @@ void setup() {
   while (!Serial && (uint32_t)(millis() - serialWaitStartMs) < SERIAL_HOST_WAIT_MS) {
     delay(10);
   }
+  ld2410cSerial.setRxBufferSize(LD2410C_RX_BUFFER_SIZE);
   ld2410cSerial.begin(LD2410C_BAUD_RATE, SERIAL_8N1, LD2410C_RX_PIN, LD2410C_TX_PIN);
   // Only configures the ESP32 UART; it says nothing about whether the sensor
   // is connected or sending. Seat state stays UNKNOWN until a valid frame.
@@ -845,11 +876,15 @@ void setup() {
   Serial.println("[SeatSense] LD2410C UART started (RX=17, TX=18, 256000 baud)");
   Serial.println("[SeatSense] UNKNOWN | waiting for valid sensor frames");
 #endif
+  networkBegin();
 }
 void loop() {
   readRadarData(radar);
   uint32_t nowMs = millis();
   updateSeatState(radar, nowMs);
+  if ((uint32_t)(nowMs - radar.lastReportMs) >= HEARTBEAT_INTERVAL_MS) {
+    reportSeatState(radar, nowMs);
+  }
 #if LD2410C_DIAGNOSTICS
   printDiagnostics(radar, nowMs);
 #endif

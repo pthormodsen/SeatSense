@@ -8,6 +8,7 @@ import { ToastProvider } from './components/Toast';
 import Building from './pages/Building';
 import Floor from './pages/Floor';
 import Home from './pages/Home';
+import Live from './pages/Live';
 import Room from './pages/Room';
 
 // Floors share one key so switching floor (also from inside the map) keeps the
@@ -40,6 +41,7 @@ const App = () => {
             <Route path="/building/:buildingId" element={<Building />} />
             <Route path="/building/:buildingId/floor/:floorId" element={<Floor />} />
             <Route path="/room/:roomId" element={<Room />} />
+            <Route path="/live" element={<Live />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>

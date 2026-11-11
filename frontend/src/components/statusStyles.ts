@@ -1,3 +1,4 @@
+import type { LiveSensorStatus, TimelineEntry } from '../services/liveSensorService';
 import type { GroupRoomStatus, SeatStatus } from '../types/campus';
 import type { ReadingRoomAvailability } from '../utils/readingRoomAvailability';
 
@@ -92,4 +93,25 @@ export const readingRoomAvailabilityStyles: Record<ReadingRoomAvailability, Stat
     dot: 'bg-slate-500',
     badge: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
   },
+};
+
+// Live sensor page (/live). Reuses the seat colours; `unknown` means the node
+// is online but its radar is not delivering valid frames.
+export const liveSensorStatusStyles: Record<LiveSensorStatus, StatusStyle> = {
+  occupied: seatStatusStyles.occupied,
+  available: seatStatusStyles.available,
+  offline: seatStatusStyles.offline,
+  unknown: {
+    label: 'No radar data',
+    dot: 'bg-amber-300',
+    badge: 'border-amber-300/30 bg-amber-300/10 text-amber-100',
+  },
+};
+
+export const liveTimelineStyles: Record<TimelineEntry['type'], { label: string; badge: string }> = {
+  'occupancy-change': { label: 'Change', badge: 'border-cyan-300/30 bg-cyan-300/10 text-cyan-100' },
+  heartbeat: { label: 'Heartbeat', badge: 'border-white/10 bg-white/5 text-slate-400' },
+  online: { label: 'Online', badge: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' },
+  offline: { label: 'Offline', badge: 'border-slate-500/30 bg-slate-500/10 text-slate-300' },
+  note: { label: 'Note', badge: 'border-white/30 bg-transparent text-white' },
 };

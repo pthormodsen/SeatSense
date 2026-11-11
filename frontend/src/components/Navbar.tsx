@@ -5,6 +5,7 @@ import { focusRingClass } from './uiStyles';
 const links = [
   { to: '/', label: 'Home', end: true },
   { to: '/building/kronstad', label: 'Kronstad', end: false },
+  { to: '/live', label: 'Live sensor', end: false },
 ];
 
 const desktopLinkClass = ({ isActive }: { isActive: boolean }) =>

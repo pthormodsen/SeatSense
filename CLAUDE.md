@@ -4,26 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-SeatSense is a study-seat occupancy system made of two independent parts that are not yet wired together:
+SeatSense is a study-seat occupancy system with three parts:
 
-1. **Firmware** (repo root, PlatformIO): an ESP32-S3 reads an HLK-LD2410C 24 GHz mmWave presence sensor over UART and prints `OCCUPIED` / `AVAILABLE` to serial.
-2. **Frontend** (`frontend/`): a React + Vite + Tailwind dashboard for Campus Kronstad that shows building → floor → room → seat occupancy. All data is currently **mock/demo data**; there is no backend.
+1. **Firmware** (repo root, PlatformIO): an ESP32-S3 reads an HLK-LD2410C 24 GHz mmWave presence sensor over UART, prints the seat state to serial and (if `include/secrets.h` exists) uploads readings over HTTPS.
+2. **Backend** (`backend/`): a small Node/TypeScript live-sensor API with no dependencies. It keeps the latest state and the last 500 events per sensor in memory (no database) and pushes them to browsers over SSE.
+3. **Frontend** (`frontend/`): a React + Vite + Tailwind dashboard for Campus Kronstad (building → floor → room → seat). Everything except `/live` is **mock/demo data** via `seatService`; `/live` shows one real sensor via `liveSensorService`.
 
-The firmware and frontend are **currently independent**: the ESP32 has no networking, and the frontend has no API client. Do not invent an API contract, payload format, Wi-Fi/MQTT/HTTP layer, or backend unless explicitly asked.
-
-Intended future data flow: ESP32 → backend/API → database → `seatService` → React.
+The live sensor contract is documented in `LIVE_SENSOR.md`. It is defined in `backend/src/types.ts`, copied to `frontend/src/types/liveSensor.ts` and produced by `src/reading_json.cpp`; change all three together. Do not add MQTT, a database or other infrastructure unless asked.
 
 ## Workflow
 
 - Do development on the `dev` branch, not `main`.
 - Do not commit or push unless asked.
+- Commits: small, logical steps. The repository owner is the only author: no `Co-Authored-By` trailers or any other Claude/AI attribution in commit messages.
 - A change is not finished until it passes the validation below.
 
 ## Validation
 
-There are no automated tests yet. At minimum:
+Only the backend has automated tests. At minimum:
 
-- Firmware changes: `pio run` must succeed. If the frame format or chip changed, recompile the chip and check `OCCUPIED`/`AVAILABLE` output in Wokwi.
+- Backend changes: `npm test` in `backend/` must succeed. Contract changes: also `backend/scripts/check-firmware-json.sh`.
+- Firmware changes: `pio run` must succeed (it builds without `include/secrets.h`, with networking disabled). If the frame format or chip changed, recompile the chip and check `OCCUPIED`/`AVAILABLE` output in Wokwi.
 - Frontend changes: `npm run build` in `frontend/` must succeed (this runs the TypeScript check).
 - A change that touches both parts must pass both.
 
@@ -58,22 +59,33 @@ npm run build     # tsc -b && vite build (this is the type check)
 npm run preview
 ```
 
+### Backend (run from `backend/`)
+
+```sh
+npm install
+npm run dev       # reads .env (DEVICE_TOKENS), listens on 3001
+npm test          # tsc + node:test API tests
+DEVICE_TOKEN=... ./scripts/send-reading.sh loop   # simulated sensor
+```
+
 ### Deployment (run from repo root)
 
-`docker compose up -d --build` builds `frontend/Dockerfile` (nginx, no published ports, joins external network `cloudflare` as `seatsense`). See `DEPLOYMENT.md`.
+`docker compose up -d --build` builds `frontend/Dockerfile` (nginx, no published ports, joins external network `cloudflare` as `seatsense`) and `backend/Dockerfile` (private `internal` network only; nginx proxies `/api/`). `DEVICE_TOKENS` comes from `.env`. See `DEPLOYMENT.md`.
 
-There are no tests or linters configured in either part (`test/` is the PlatformIO placeholder).
+Only the backend has tests; there are no linters (`test/` is the PlatformIO placeholder).
 
 ## Firmware architecture
 
-- `src/main.cpp` is the whole firmware. It byte-syncs on the LD2410C frame header `F4 F3 F2 F1`, buffers fixed 23-byte frames, validates the footer `F8 F7 F6 F5`, data length 13, and the `0x02 0xAA ... 0x55 0x00` markers, then parses target type, moving/stationary distance (little-endian u16) and energy.
+- `src/main.cpp` holds the radar part of the firmware. It byte-syncs on the LD2410C frame header `F4 F3 F2 F1`, buffers fixed 23-byte frames, validates the footer `F8 F7 F6 F5`, data length 13, and the `0x02 0xAA ... 0x55 0x00` markers, then parses target type, moving/stationary distance (little-endian u16) and energy.
+- Networking is in `src/network.cpp`: a FreeRTOS task on core 0 that takes readings from a queue, so it never blocks UART parsing. It handles Wi-Fi, NTP, and HTTPS verified against `src/root_ca.h`. `main.cpp` queues the debounced seat state on every change and as a 10 s heartbeat. The JSON body is built in `src/reading_json.cpp`. Credentials are in the git-ignored `include/secrets.h` (template: `include/secrets.example.h`).
 - Occupied = `targetType != 0`. Output is printed only when occupancy or radar values change.
 - UART pins: `LD2410C_RX_PIN = 17`, `LD2410C_TX_PIN = 18` at 256000 baud (sensor TX → GPIO17, sensor RX → GPIO18).
 - `chips/ld2410c.chip.c` is a Wokwi custom chip that emits the same 23-byte frame every 250 ms from runtime attributes (`presence`, `targetType`, `movingDistance`, `stationaryDistance`, `movingEnergy`, `stationaryEnergy`). **If the frame format changes, update both the chip and `main.cpp`**, and recompile the `.wasm` (it is committed).
 
 ## Frontend architecture
 
-- **Routes** (`src/App.tsx`): `/`, `/building/:buildingId`, `/building/:buildingId/floor/:floorId`, `/room/:roomId`.
+- **Routes** (`src/App.tsx`): `/`, `/building/:buildingId`, `/building/:buildingId/floor/:floorId`, `/room/:roomId`, `/live`.
+- **Live sensor** (`pages/Live.tsx`, `services/liveSensorService.ts`): fetches the state and event log from `/api`, then follows the SSE stream (it reconnects by itself). It shows status, raw radar values, an event timeline, ground-truth notes and a CSV export. In development, Vite proxies `/api` to `localhost:3001`.
 - **Data access** goes through `src/services/seatService.ts`, a thin facade over `src/data/mockCampus.ts`. Swapping in a real backend should happen behind this service.
 - **Domain types** live in `src/types/campus.ts`. `Room` is a discriminated union on `type`: `group-room` (booking + single presence flag, no seats) vs. `reading-room` (seats + a `RoomLayout`). Seat status (`available | occupied | recently-used | offline`) is derived, not stored — see `utils/seatStatus.ts` (recently-used window = 10 min) and `utils/roomStatus.ts` for group rooms.
 - **MazeMap integration** (`components/MazeMapFloorMap.tsx`): loads the MazeMap JS SDK v2.1.2 from CDN at runtime, shows Kronstad (campus id 9), overlays room-status GeoJSON layers, and reports room clicks / floor-level changes. App floors `M1`–`M5` map to MazeMap z-levels 2–6 in `data/mazeMapPlacements.ts`.

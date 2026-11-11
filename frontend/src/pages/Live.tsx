@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import LiveSeatPreview from '../components/LiveSeatPreview';
 import PageHeader from '../components/PageHeader';
 import { liveSensorStatusStyles, liveTimelineStyles } from '../components/statusStyles';
 import { cardClass, focusRingClass, primaryButtonClass, secondaryButtonClass } from '../components/uiStyles';
@@ -281,6 +282,14 @@ const LiveSensorView = ({ sensorId, sensorPicker }: LiveSensorViewProps) => {
           </p>
         </section>
       </div>
+
+      <section className={`${cardClass} p-5`} aria-labelledby="live-preview-heading">
+        <h2 id="live-preview-heading" className="eyebrow">In the reading room</h2>
+        <p className="mt-1 text-sm text-slate-400">How this seat would look to a student on the room map.</p>
+        <div className="mx-auto mt-4 max-w-xl">
+          <LiveSeatPreview status={status} sensorId={state.sensorId} />
+        </div>
+      </section>
 
       <section className={`${cardClass} p-5`} aria-labelledby="live-timeline-heading">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
